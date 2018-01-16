@@ -1,7 +1,7 @@
 # fandom-search
 An approximate nearest-neighbor search for text reuse.
 
-###Scraping Works of Fanfiction from Archive of Our Own
+### Scraping Works of Fanfiction from Archive of Our Own
 
 Run the scrape-ao3 script either the URL or Tag options, as follows:
 
