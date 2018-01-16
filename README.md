@@ -22,7 +22,7 @@ optional arguments:
   
 Do not use the --outfile option. The default target directory is scraped-html, and using a different output directory will be incompatible with the cleaning and processing scripts.
 
-For example, to scrape the Star Wars Episode VII: The Force Awakens (2015) fanfiction words, use:
+For example, to scrape the Star Wars Episode VII: The Force Awakens (2015) fanfiction works use:
 ```
 scrape-ao3.py -u http://archiveofourown.org/tags/Star%20Wars%20Episode%20VII:%20The%20Force%20Awakens%20(2015)/works
 ```
