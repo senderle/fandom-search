@@ -98,6 +98,11 @@ def convert_dir(io):
     html_dir = io['i']
     out_dir = io['o']
 
+    try:
+        os.makedirs(out_dir)
+    except Exception:
+        pass
+
     errors = []
     for infile in os.listdir(html_dir):
         base, ext = os.path.splitext(infile)
@@ -606,6 +611,11 @@ def scrape(io):
 
     # fan work scraping options
     if header or tag:
+        try:
+            os.makedirs(out_dir)
+        except Exception:
+            pass
+        
         os.chdir(out_dir)
         error_works = load_error_ids()
 
@@ -979,7 +989,7 @@ def format_data(io):
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='process fanworks scraped from Archive of Our Own.') 
-    subparsers = parser.add_subparsers(help='clean, getmeta, search, or scrape')
+    subparsers = parser.add_subparsers(help='scrape, clean, getmeta, search, matrix, or format')
     
     #sub-parsers
     scrape_parser = subparsers.add_parser('scrape', help='find and scrape fanfiction works from Archive of Our Own')
@@ -987,33 +997,33 @@ if __name__ == '__main__':
     group.add_argument('-s', '--search', action='store', help="search term to search for a tag to scrape")
     group.add_argument('-t', '--tag', action='store', help="the tag to be scraped")
     group.add_argument('-u', '--url', action='store', help="the full URL of first page to be scraped")
-    scrape_parser.add_argument('-o', '--out', action='store', default='scraped-html', help="target directory for scraped html files")
+    scrape_parser.add_argument('-o', '--out', action='store', default=os.path.join('.','scraped-html'), help="target directory for scraped html files")
     scrape_parser.add_argument('-p', '--startpage', action='store', default=1, type=int, help="page on which to begin downloading (to resume a previous job)")
     scrape_parser.set_defaults(func=scrape)
     
     clean_parser = subparsers.add_parser('clean', help='takes a directory of html files and yields a new directory of text files')
-    clean_parser.add_argument('-i', action='store', default='scraped-html', help='directory of input html files to clean')
-    clean_parser.add_argument('-o', action='store', default='plaintext', help='target directory for output txt files')
+    clean_parser.add_argument('i', action='store', help='directory of input html files to clean')
+    clean_parser.add_argument('-o', action='store', default='plain-text', help='target directory for output txt files')
     clean_parser.set_defaults(func=convert_dir)
 
     meta_parser = subparsers.add_parser('getmeta', help='takes a directory of html files and yields a csv file containing metadata')
-    meta_parser.add_argument('-i', action='store', default='scraped-html', help='directory of input html files to process')
+    meta_parser.add_argument('i', action='store', help='directory of input html files to process')
     meta_parser.add_argument('-o', action='store', default='fan-meta', help='filename for metadata csv file')
     meta_parser.set_defaults(func=collect_meta)
     
     search_parser = subparsers.add_parser('search', help='compare fanworks with the original script')
-    search_parser.add_argument('-d', action='store', default='plaintext', help='directory of fanwork text files')
-    search_parser.add_argument('-s', action='store', default=os.path.join('.','original-scripts','markup-script.txt'), help='filename for markup version of script')
+    search_parser.add_argument('d', action='store', help='directory of fanwork text files')
+    search_parser.add_argument('s', action='store', help='filename for markup version of script')
     search_parser.set_defaults(func=analyze)
     
     matrix_parser = subparsers.add_parser('matrix', help='deduplicates and builds matrix for best n-gram matches')
-    matrix_parser.add_argument('-n', action='store', default=6, help='n-gram size, default is 6-grams')
     matrix_parser.add_argument('i', action='store', help='input csv file')
     matrix_parser.add_argument('m', action = 'store', help='fandom/movie name for output file prefix')
+    matrix_parser.add_argument('-n', action='store', default = 6, help='n-gram size, default is 6-grams')
     matrix_parser.set_defaults(func=process)
     
     data_parser = subparsers.add_parser('format', help='takes a script and outputs a csv with senitment information for each word formatted for javascript visualization')
-    data_parser.add_argument('-s', action='store', default=os.path.join('.','original-scripts','markup-script.txt'), help='filename for markup version of script')
+    data_parser.add_argument('s', action='store', help='filename for markup version of script')
     data_parser.add_argument('-o', action='store', default='js-data', help='filename for csv output file of data formatted for visualization')
     data_parser.set_defaults(func=format_data)
     
