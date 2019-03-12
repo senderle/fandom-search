@@ -279,7 +279,18 @@ def find_matches_multi(fan_works, ann_index, pool):
     chunksize = len(fan_works) // (4 * pool._processes)
     record_sets = pool.map(ann_index.search, fan_works, chunksize=chunksize)
     records = []
-    records.extend(r for r_set in record_sets for r in r_set)
+    try:
+        for r_set in record_sets:
+            if r_set is not None:
+                print(r_set)
+                die
+            for r in r_set:
+                records.append(r)
+        # records.extend(r for r_set in record_sets for r in r_set)
+    except TypeError:
+        print(r_set is None)
+        print(record_sets is None)
+        raise
     return records
 
 def find_matches(fan_works, ann_index, pool):
@@ -442,10 +453,13 @@ def load_markup_script(filename,
                         _char_rex=re.compile('CHARACTER_NAME<<(?P<character>[^>]*)>>')):
     with open(filename, encoding='utf-8') as ip:
         current_scene = None
+        current_scene_count = 0
+        current_scene_error_fix = False
         current_char = None
         rows = [['LOWERCASE', 'SPACY_ORTH_ID', 'SCENE', 'CHARACTER']]
         for i, line in enumerate(ip):
             if _scene_rex.search(line):
+                current_scene_count += 1
                 scene_string = _scene_rex.search(line).group('scene')
                 scene_string = ''.join(c for c in scene_string
                                        if c.isdigit())
@@ -453,7 +467,12 @@ def load_markup_script(filename,
                     scene_int = int(scene_string)
                     current_scene = scene_int
                 except ValueError:
+                    current_scene_error_fix = True
                     print("Error in Scene markup: {}".format(line))
+
+                if current_scene_error_fix:
+                    current_scene = current_scene_count
+
             elif _char_rex.search(line):
                 current_char = _char_rex.search(line).group('character')
             elif _line_rex.search(line):
@@ -478,32 +497,33 @@ def analyze(inputs):
     fan_works = os.listdir(fan_work_directory)
     fan_works = [os.path.join(fan_work_directory, f)
                  for f in fan_works]
-    random.seed(4815162342)  # This will always generate the same "random" sample.
+
+    # This will always generate the same "random" sample.
+    random.seed(4815162342)
     random.shuffle(fan_works)
 
     cluster_size = 500
     start = 0
-    fan_clusters = [fan_works[i:i + cluster_size] for i in range(start, len(fan_works), cluster_size)]
+    fan_clusters = [fan_works[i:i + cluster_size]
+                    for i in range(start, len(fan_works), cluster_size)]
 
     filename_base = 'match-{}gram{{}}'.format(window_size)
     batch_filename = filename_base.format('-batch-{}.csv')
 
     accumulated_records = [new_record_structure['fields']]
-    print('Starting multiprocessing...')
+    ann_index = AnnIndexSearch(original_script_markup,
+                               window_size,
+                               number_of_hashes,
+                               hash_dimensions,
+                               distance_threshold)
+
     for i, fan_cluster in enumerate(fan_clusters, start=start):
         print('Processing cluster {} ({}-{})'.format(i,
                                                      cluster_size * i,
                                                      cluster_size * (i + 1)))
-        with multiprocessing.Pool(processes=5) as pool:
-            ann_index = AnnIndexSearch(original_script_markup,
-                                       window_size,
-                                       number_of_hashes,
-                                       hash_dimensions,
-                                       distance_threshold)
-            records = find_matches_multi(fan_cluster, ann_index, pool)
-            # records = find_matches(fan_cluster, ann_index, pool)
-            write_records(records, batch_filename.format(i))
-            accumulated_records.extend(records)
+        records = find_matches(fan_cluster, ann_index, None)
+        write_records(records, batch_filename.format(i))
+        accumulated_records.extend(records)
 
     i = 0
     today_str = '-{:%Y%m%d}.csv'.format(datetime.date.today())
@@ -1045,7 +1065,9 @@ if __name__ == '__main__':
 
     #call function
     if hasattr(args, 'func'):
-        spacy_model = spacy.load('en_core_web_lg')
+        spacy_model = spacy.load('en_core_web_md',
+                                 disable=['parser', 'tagger', 'ner'])
+        spacy_model.max_length = 3000000
         args.func(vars(args))
     else:
         parser.print_help()
