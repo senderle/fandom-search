@@ -22,7 +22,8 @@ from Levenshtein import distance as lev_distance
 from bs4 import BeautifulSoup
 
 import spacy
-spacy_model = None  # Model to be loaded later, after we know we need it.
+_SPACY_MODEL = None  # Model to be loaded later, after we know we need it.
+_ANN_INDEX = None
 
 try:
     import lextrie
@@ -275,27 +276,19 @@ def build_lsh_engine(orig, window_size, number_of_hashes, hash_dimensions):
         engine.store_vector(row, (ix, str(orig[ix: ix + window_size])))
     return engine
 
-def find_matches_multi(fan_works, ann_index, pool):
+def multi_search_wrapper(works):
+    return _ANN_INDEX.search(works)
+
+def find_matches_multi(fan_works, pool):
     chunksize = len(fan_works) // (4 * pool._processes)
-    record_sets = pool.map(ann_index.search, fan_works, chunksize=chunksize)
+    record_sets = pool.map(multi_search_wrapper, fan_works, chunksize=chunksize)
     records = []
-    try:
-        for r_set in record_sets:
-            if r_set is not None:
-                print(r_set)
-                die
-            for r in r_set:
-                records.append(r)
-        # records.extend(r for r_set in record_sets for r in r_set)
-    except TypeError:
-        print(r_set is None)
-        print(record_sets is None)
-        raise
+    records.extend(r for r_set in record_sets for r in r_set)
     return records
 
 def find_matches(fan_works, ann_index, pool):
     record_sets = map(ann_index.search, fan_works)
-    records = [] #list of map of ann_index.search, fanwords
+    records = []  # list of map of ann_index.search, fanwords
     records.extend(r for r_set in record_sets for r in r_set)
     return records
 
@@ -319,7 +312,7 @@ class AnnIndexSearch(object):
 
         self.window_size = window_size
         self.distance_threshold = distance_threshold
-        orig_doc = spacy.tokens.Doc(spacy_model.vocab, self.word_lowercase)
+        orig_doc = spacy.tokens.Doc(_SPACY_MODEL.vocab, self.word_lowercase)
         self.engine = build_lsh_engine(orig_doc, window_size,
                                        number_of_hashes, hash_dimensions)
         self.reset_stats()
@@ -333,7 +326,7 @@ class AnnIndexSearch(object):
 
     def search(self, filename):
         with open(filename, encoding='utf8') as fan_file:
-            fan = spacy_model(fan_file.read())
+            fan = _SPACY_MODEL(fan_file.read())
 
         # Create the fan windows:
         fan_vectors = mk_vectors(fan)
@@ -476,11 +469,11 @@ def load_markup_script(filename,
             elif _char_rex.search(line):
                 current_char = _char_rex.search(line).group('character')
             elif _line_rex.search(line):
-                tokens = spacy_model(_line_rex.search(line).group('line'))
+                tokens = _SPACY_MODEL(_line_rex.search(line).group('line'))
                 for t in tokens:
                     # original Spacy lexeme object can be recreated using
-                    #     spacy.lexeme.Lexeme(spacy_model.vocab, t.orth)
-                    # where `spacy_model = spacy.load('en')`
+                    #     spacy.lexeme.Lexeme(_SPACY_MODEL.vocab, t.orth)
+                    # where `_SPACY_MODEL = spacy.load('en')`
                     row = [t.lower_, t.lower, current_scene, current_char]
                     rows.append(row)
     return rows
@@ -516,6 +509,8 @@ def analyze(inputs):
                                number_of_hashes,
                                hash_dimensions,
                                distance_threshold)
+    global _ANN_INDEX
+    _ANN_INDEX = ann_index
 
     for i, fan_cluster in enumerate(fan_clusters, start=start):
         print('Processing cluster {} ({}-{})'.format(i,
@@ -1065,9 +1060,9 @@ if __name__ == '__main__':
 
     #call function
     if hasattr(args, 'func'):
-        spacy_model = spacy.load('en_core_web_md',
-                                 disable=['parser', 'tagger', 'ner'])
-        spacy_model.max_length = 3000000
+        _SPACY_MODEL = spacy.load('en_core_web_md',
+                                  disable=['parser', 'tagger', 'ner'])
+        _SPACY_MODEL.max_length = 3000000
         args.func(vars(args))
     else:
         parser.print_help()
