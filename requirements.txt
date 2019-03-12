@@ -1,0 +1,7 @@
+pandas
+nearpy
+spacy
+requests
+bs4
+python-Levenshtein
+https://github.com/senderle/lextrie/archive/master.zip

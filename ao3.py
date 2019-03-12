@@ -18,28 +18,30 @@ from time import sleep
 import numpy
 import pandas as pd
 import nearpy
-import lextrie
 from Levenshtein import distance as lev_distance
 from bs4 import BeautifulSoup
 
 import spacy
-sp = spacy.load('en')
-
-bing = lextrie.LexTrie.from_plugin('bing')
-
-#set defaults
-emolex = None
-liwc = None
+spacy_model = None  # Model to be loaded later, after we know we need it.
 
 try:
-    emolex = lextrie.LexTrie.from_plugin('emolex_en')
-except Exception:
-    pass
+    import lextrie
+    bing = lextrie.LexTrie.from_plugin('bing')
 
-try:
-    liwc = lextrie.LexTrie.from_plugin('liwc')
-except Exception:
-    pass
+    try:
+        emolex = lextrie.LexTrie.from_plugin('emolex_en')
+    except Exception:
+        pass
+
+    try:
+        liwc = lextrie.LexTrie.from_plugin('liwc')
+    except Exception:
+        pass
+except ImportError:
+    bing = None
+    emolex = None
+    liwc = None
+
 
 # -----------------------------------------------------------------------------
 # Search Script Settings
@@ -58,8 +60,8 @@ number_of_hashes = 15  # Bigger -> slower (linear), more matches
 hash_dimensions = 14   # Bigger -> faster (???), fewer matches
 
 new_record_structure = {
-    'fields': ['FAN_WORK_FILENAME', 
-               'FAN_WORK_WORD_INDEX', 
+    'fields': ['FAN_WORK_FILENAME',
+               'FAN_WORK_WORD_INDEX',
                'FAN_WORK_WORD',
                'FAN_WORK_ORTH_ID',
                'ORIGINAL_SCRIPT_WORD_INDEX',
@@ -71,7 +73,7 @@ new_record_structure = {
                'BEST_LEVENSHTEIN_DISTANCE',
                'BEST_COMBINED_DISTANCE',
               ],
-    'types': [str, int, str, int, int, str, 
+    'types': [str, int, str, int, int, str,
               int, str, int, float, int, float
              ]
 }
@@ -108,7 +110,7 @@ def convert_dir(io):
         base, ext = os.path.splitext(infile)
         outfile = os.path.join(out_dir, base + '.txt')
         infile = os.path.join(html_dir, infile)
-        
+
         if not os.path.exists(outfile):
             text = get_fan_work(infile)
             if text:
@@ -116,14 +118,14 @@ def convert_dir(io):
                     out.write(text)
             else:
                 errors.append(infile)
-    
+
     error_outfile = 'clean-html-errors.txt'
     with open(error_outfile, 'w', encoding='utf-8') as out:
         out.write('The following files were not converted:\n\n')
         for e in errors:
             out.write(e)
             out.write('\n')
-            
+
 # ------------------
 # METADATA FUNCTIONS
 # ------------------
@@ -138,21 +140,21 @@ meta_headers = ['FILENAME', 'TITLE', 'AUTHOR', 'SUMMARY', 'NOTES',
 def get_fan_meta(fan_html_name):
     with open(fan_html_name, encoding='utf8') as fan_in:
         fan_html = BeautifulSoup(fan_in.read(), 'lxml')
-    
+
     title = select_text(fan_html, '.title.heading')
     author = select_text(fan_html, '.byline.heading')
     summary = select_text(fan_html, '.summary.module')
     notes = select_text(fan_html, '.notes.module')
     date = select_text(fan_html, 'dd.published')
     language = select_text(fan_html, 'dd.language')
-    tags = {k.get_text().strip().strip(':'): 
-            v.get_text(separator='; ').strip().strip('\n; ') 
-            for k, v in 
+    tags = {k.get_text().strip().strip(':'):
+            v.get_text(separator='; ').strip().strip('\n; ')
+            for k, v in
             zip(fan_html.select('dt.tags'), fan_html.select('dd.tags'))}
     tags = json.dumps(tags)
-    
+
     path, filename = os.path.split(fan_html_name)
-    
+
     vals = [filename, title, author, summary, notes,
             date, language, tags]
     return dict(zip(meta_headers, vals))
@@ -160,20 +162,20 @@ def get_fan_meta(fan_html_name):
 def collect_meta(io):
     in_dir = io['i']
     out_file = io['o']
-    
+
     errors = []
     rows = []
     for infile in os.listdir(in_dir):
         infile = os.path.join(in_dir, infile)
         rows.append(get_fan_meta(infile))
-    
+
     error_outfile = out_file + '-errors.txt'
     with open(error_outfile, 'w', encoding='utf-8') as out:
         out.write('Metadata could not be collected from the following files:\n\n')
         for e in errors:
             out.write(e)
             out.write('\n')
-    
+
     csv_outfile = out_file + '.csv'
     with open(csv_outfile, 'w', encoding='utf-8') as out:
         wr = csv.DictWriter(out, fieldnames=meta_headers)
@@ -186,9 +188,9 @@ def collect_meta(io):
 # -----------------
 
 def mk_vectors(sp_txt):
-    #Given a parsed text in `spacy`'s native format, 
+    #Given a parsed text in `spacy`'s native format,
     #produce a sequence of vectors, one per token.
-    
+
     rows = len(sp_txt)
     cols = len(sp_txt[0].vector) if rows else 0
 
@@ -208,7 +210,7 @@ def mk_vectors(sp_txt):
 
 def cosine_distance(row_values, col_values):
     """Calculate the cosine distance between two vectors. Also
-    accepts matrices and 2-d arrays, and calculates the 
+    accepts matrices and 2-d arrays, and calculates the
     distances over the cross product of rows and columns.
     """
     verr_msg = '`cosine_distance` is not defined for {}-dimensional arrays.'
@@ -216,7 +218,7 @@ def cosine_distance(row_values, col_values):
         row_values = row_values[None,:]
     elif len(row_values.shape) != 2:
         raise ValueError(verr_msg.format(len(row_values.shape)))
-    
+
     if len(col_values.shape) == 1:
         col_values = col_values[:,None]
     elif len(col_values.shape) != 2:
@@ -224,7 +226,7 @@ def cosine_distance(row_values, col_values):
 
     row_norm = (row_values * row_values).sum(axis=1) ** 0.5
     row_norm = row_norm[:,None]
-    
+
     col_norm = (col_values * col_values).sum(axis=0) ** 0.5
     col_norm = col_norm[None,:]
 
@@ -234,7 +236,7 @@ def cosine_distance(row_values, col_values):
     return 1 - result
 
 def build_lsh_engine(orig, window_size, number_of_hashes, hash_dimensions):
-    # Build the ngram vectors using rolling windows. 
+    # Build the ngram vectors using rolling windows.
     # Variables named `*_win_vectors` contain vectors for
     # the given input, such that each row is the vector
     # for a single window. Successive windows overlap
@@ -251,10 +253,10 @@ def build_lsh_engine(orig, window_size, number_of_hashes, hash_dimensions):
     # and searching for good matches in the engine's index of script
     # text.
 
-    # We could do the search in the opposite direction, storing 
+    # We could do the search in the opposite direction, storing
     # fan text in the engine's index, and passing over window-
-    # vectors from the original script, searching for matches in 
-    # the index of fan text. Unfortuantely, the quality of the 
+    # vectors from the original script, searching for matches in
+    # the index of fan text. Unfortuantely, the quality of the
     # matches found goes down when you add too many values to the
     # engine's index.
     vector_dim = orig_win_vectors.shape[1]
@@ -268,7 +270,7 @@ def build_lsh_engine(orig, window_size, number_of_hashes, hash_dimensions):
     engine = nearpy.Engine(vector_dim,
                            lshashes=hashes,
                            distance=nearpy.distances.CosineDistance())
-    
+
     for ix, row in enumerate(orig_win_vectors):
         engine.store_vector(row, (ix, str(orig[ix: ix + window_size])))
     return engine
@@ -292,36 +294,36 @@ class AnnIndexSearch(object):
         orig_csv = load_markup_script(original_script_filename)
         orig_csv = orig_csv[1:]  # drop header
         orig_csv = [[i] + r for i, r in enumerate(orig_csv)]
-        # [['ORIGINAL_SCRIPT_INDEX', 
-        #   'LOWERCASE', 
-        #   'SPACY_ORTH_ID', 
+        # [['ORIGINAL_SCRIPT_INDEX',
+        #   'LOWERCASE',
+        #   'SPACY_ORTH_ID',
         #   'SCENE',
         #   'CHARACTER']]
 
         (self.word_index,
-         self.word_lowercase, 
-         self.orth_id, 
-         self.scene, 
+         self.word_lowercase,
+         self.orth_id,
+         self.scene,
          self.character) = zip(*orig_csv)
 
         self.window_size = window_size
         self.distance_threshold = distance_threshold
-        orig_doc = spacy.tokens.Doc(sp.vocab, self.word_lowercase)
-        self.engine = build_lsh_engine(orig_doc, window_size, 
+        orig_doc = spacy.tokens.Doc(spacy_model.vocab, self.word_lowercase)
+        self.engine = build_lsh_engine(orig_doc, window_size,
                                        number_of_hashes, hash_dimensions)
         self.reset_stats()
 
     def reset_stats(self):
         self._windows_processed = 0
-        
+
     @property
     def windows_processed(self):
         return self._windows_processed
-    
+
     def search(self, filename):
         with open(filename, encoding='utf8') as fan_file:
-            fan = sp(fan_file.read())
-    
+            fan = spacy_model(fan_file.read())
+
         # Create the fan windows:
         fan_vectors = mk_vectors(fan)
         fan_win_vectors = numpy.array(
@@ -333,32 +335,32 @@ class AnnIndexSearch(object):
         for fan_ix, row in enumerate(fan_win_vectors):
             self._windows_processed += 1
             results = self.engine.neighbours(row)
-            
+
             # Extract data about the original script
             # embedded in the engine's results.
-            results = [(match_ix, match_str, distance) 
-                       for vec, (match_ix, match_str), distance in results 
+            results = [(match_ix, match_str, distance)
+                       for vec, (match_ix, match_str), distance in results
                        if distance < self.distance_threshold]
 
-            # Create a new record with original script 
+            # Create a new record with original script
             # information and fan work information.
             for match_ix, match_str, distance in results:
                 fan_context = str(fan[fan_ix: fan_ix + window_size])
                 lev_d = lev_distance(match_str, fan_context)
-                
+
                 for window_ix in range(window_size):
                     fan_word_ix = fan_ix + window_ix
                     fan_word = fan[fan_word_ix].orth_
                     fan_orth_id = fan[fan_word_ix].orth
-                    
+
                     orig_word_ix = match_ix + window_ix
                     orig_word = self.word_lowercase[orig_word_ix]
                     orig_orth_id = self.orth_id[orig_word_ix]
                     char = self.character[orig_word_ix]
                     scene = self.scene[orig_word_ix]
-        
+
                     duplicate_records[(filename, fan_word_ix)].append(
-                        # NOTE: This **must** match the definition 
+                        # NOTE: This **must** match the definition
                         #       of `record_structure` above
                         [filename,
                          fan_word_ix,
@@ -369,14 +371,14 @@ class AnnIndexSearch(object):
                          orig_orth_id,
                          char,
                          scene,
-                         distance, 
-                         lev_d, 
+                         distance,
+                         lev_d,
                          distance * lev_d]
                     )
-                
+
         # To deduplicate duplicate_records, we
-        # pick the single best match, as measured by 
-        # the combined distance for the given n-gram 
+        # pick the single best match, as measured by
+        # the combined distance for the given n-gram
         # match that first identified the word.
         for k, dset in duplicate_records.items():
             duplicate_records[k] = min(dset, key=itemgetter(11))
@@ -385,33 +387,33 @@ class AnnIndexSearch(object):
 
 def make_match_strata(records, record_structure, num_strata, max_threshold):
     combined_ix = record_structure['fields'].index('BEST_COMBINED_DISTANCE')
-    low = [i / num_strata * max_threshold 
+    low = [i / num_strata * max_threshold
            for i in range(0, num_strata)]
-    high = [i / num_strata * max_threshold 
+    high = [i / num_strata * max_threshold
             for i in range(1, num_strata + 1)]
     ranges = zip(low, high)
-    
-    return [[r for r in records[1:] 
+
+    return [[r for r in records[1:]
              if r[combined_ix] >= low and r[combined_ix] < high]
             for low, high in ranges]
 
 def label_match_strata(num_strata, max_threshold):
-    high = [i / num_strata * max_threshold 
+    high = [i / num_strata * max_threshold
             for i in range(1, num_strata + 1)]
     return ['Number of matches below threshold {:.2}'.format(h)
             for h in high]
 
-def chart_match_strata(records, 
-                       num_strata=5, max_threshold=1, 
-                       start=1, end=None, 
-                       figsize=(15, 10), 
+def chart_match_strata(records,
+                       num_strata=5, max_threshold=1,
+                       start=1, end=None,
+                       figsize=(15, 10),
                        colormap='plasma',
                        legend=True):
     match_strata = make_match_strata(records, new_record_structure, num_strata, max_threshold)
 
-    cumulative_strata = [match_strata[0:i] for i in 
+    cumulative_strata = [match_strata[0:i] for i in
                          range(len(match_strata), 0, -1)]
-    match_counters = [Counter(row[4] for matches in strata for row in matches) 
+    match_counters = [Counter(row[4] for matches in strata for row in matches)
                       for strata in cumulative_strata]
     maxn = max(max(mc) for mc in match_counters if mc)
     match_cols = [[mc[n] for mc in match_counters]
@@ -430,7 +432,7 @@ def most_frequent_matches(records, n_matches, threshold):
     ct = Counter(r[3] for r in records if r[-1] < threshold)
     ix_to_context = {r[3]: r[4] for r in records}
     matches = ct.most_common(n_matches)
-    return [(i, c, ix_to_context[i]) 
+    return [(i, c, ix_to_context[i])
             for i, c in matches]
     return matches
 
@@ -444,15 +446,22 @@ def load_markup_script(filename,
         rows = [['LOWERCASE', 'SPACY_ORTH_ID', 'SCENE', 'CHARACTER']]
         for i, line in enumerate(ip):
             if _scene_rex.search(line):
-                current_scene = int(_scene_rex.search(line).group('scene'))
+                scene_string = _scene_rex.search(line).group('scene')
+                scene_string = ''.join(c for c in scene_string
+                                       if c.isdigit())
+                try:
+                    scene_int = int(scene_string)
+                    current_scene = scene_int
+                except ValueError:
+                    print("Error in Scene markup: {}".format(line))
             elif _char_rex.search(line):
                 current_char = _char_rex.search(line).group('character')
             elif _line_rex.search(line):
-                tokens = sp(_line_rex.search(line).group('line'))
+                tokens = spacy_model(_line_rex.search(line).group('line'))
                 for t in tokens:
                     # original Spacy lexeme object can be recreated using
-                    #     spacy.lexeme.Lexeme(sp.vocab, t.orth)
-                    # where `sp = spacy.load('en')`
+                    #     spacy.lexeme.Lexeme(spacy_model.vocab, t.orth)
+                    # where `spacy_model = spacy.load('en')`
                     row = [t.lower_, t.lower, current_scene, current_char]
                     rows.append(row)
     return rows
@@ -461,37 +470,41 @@ def write_records(records, filename):
     with open(filename, 'w', encoding='utf-8') as out:
         wr = csv.writer(out)
         wr.writerows(records)
-        
+
 def analyze(inputs):
     fan_work_directory = inputs['d']
     original_script_markup = inputs['s']
-    
+
     fan_works = os.listdir(fan_work_directory)
-    fan_works = [os.path.join(fan_work_directory, f) 
-                 for f in fan_works]   
+    fan_works = [os.path.join(fan_work_directory, f)
+                 for f in fan_works]
     random.seed(4815162342)  # This will always generate the same "random" sample.
     random.shuffle(fan_works)
-      
+
     cluster_size = 500
     start = 0
     fan_clusters = [fan_works[i:i + cluster_size] for i in range(start, len(fan_works), cluster_size)]
-    
+
     filename_base = 'match-{}gram{{}}'.format(window_size)
     batch_filename = filename_base.format('-batch-{}.csv')
-    
+
     accumulated_records = [new_record_structure['fields']]
+    print('Starting multiprocessing...')
     for i, fan_cluster in enumerate(fan_clusters, start=start):
+        print('Processing cluster {} ({}-{})'.format(i,
+                                                     cluster_size * i,
+                                                     cluster_size * (i + 1)))
         with multiprocessing.Pool(processes=5) as pool:
-            ann_index = AnnIndexSearch(original_script_markup, 
-                                       window_size, 
-                                       number_of_hashes, 
+            ann_index = AnnIndexSearch(original_script_markup,
+                                       window_size,
+                                       number_of_hashes,
                                        hash_dimensions,
                                        distance_threshold)
-            #records = find_matches_multi(fan_cluster, ann_index, pool)
-            records = find_matches(fan_cluster, ann_index, pool)
+            records = find_matches_multi(fan_cluster, ann_index, pool)
+            # records = find_matches(fan_cluster, ann_index, pool)
             write_records(records, batch_filename.format(i))
             accumulated_records.extend(records)
-    
+
     i = 0
     today_str = '-{:%Y%m%d}.csv'.format(datetime.date.today())
     name_check = filename_base.format(today_str)
@@ -499,8 +512,8 @@ def analyze(inputs):
         i += 1
         today_str = '-{:%Y%m%d}-{}.csv'.format(datetime.date.today(), i)
         name_check = filename_base.format(today_str)
-    
-    write_records(accumulated_records, 
+
+    write_records(accumulated_records,
                   name_check)
 
 #----------------
@@ -593,7 +606,7 @@ def scrape(io):
         safe_search = search_term.replace(' ', '+')
         # an alternative here is to scrape this page and use regex to filter the results:
         # http://archiveofourown.org/media/Movies/fandoms?
-        # the canonical filter is used here because the "fandom" filter on the 
+        # the canonical filter is used here because the "fandom" filter on the
         # beta tag search is broken as of November 2017
         search_ref = "http://archiveofourown.org/tags/search?utf8=%E2%9C%93&query%5Bname%5D=" + safe_search + "&query%5Btype%5D=&query%5Bcanonical%5D=true&page="
         print('\nTags:')
@@ -615,7 +628,7 @@ def scrape(io):
             os.makedirs(out_dir)
         except Exception:
             pass
-        
+
         os.chdir(out_dir)
         error_works = load_error_ids()
 
@@ -623,13 +636,13 @@ def scrape(io):
         while (len(results)) != 0:
             log('\n\nPAGE ' + str(end))
             print('Page {} '.format(end))
-			
+
             display('Loading table of contents;')
-            
+
             if tag:
                 mod_header = tag.replace(' ', '%20')
-                header = "http://archiveofourown.org/tags/" + mod_header + "/works"       
-            
+                header = "http://archiveofourown.org/tags/" + mod_header + "/works"
+
             request_url = header + "?page=" + str(end)
             toc_page = request_loop(request_url)
             if not toc_page:
@@ -638,21 +651,21 @@ def scrape(io):
                 display(err_msg)
                 reset_display()
                 continue
-            
+
             toc_page_soup = BeautifulSoup(toc_page, "lxml")
             results = toc_page_soup(attrs={'href': re.compile('^/works/[0-9]+[0-9]$')})
-            
+
             log('Number of Works on Page {}: {}'.format(end, len(results)))
             log('Page URL: {}'.format(request_url))
             log('Progress: ')
-        
+
             reset_display()
-            				
+
             for x in results:
                 body = str(x).split('"')
                 docID = str(body[1]).split('/')[2]
                 filename = str(docID) + '.html'
-				
+
                 if os.path.exists(filename):
                     display('Work {} already exists -- skpping;'.format(docID))
                     reset_display()
@@ -685,7 +698,7 @@ def scrape(io):
                     log(msg.format(docID, str(end), bytes_written))
                     reset_display()
 
-            reset_display()  
+            reset_display()
             end = end + 1
 
 # ----------------
@@ -761,7 +774,7 @@ class StrictNgramDedupe(object):
 
         phrase_indices = [phrases[p] for p in sorted_phrases]
         phrases = sorted_phrases
-        
+
         if emolex:
             emo_count = [emolex.lex_count(p) for p in phrases]
             emo_sent_count = self.project_sentiment_keys(emo_count,
@@ -775,11 +788,11 @@ class StrictNgramDedupe(object):
                                                          'SURPRISE',
                                                          'FEAR',
                                                          'JOY'])
-        
-        bing_count = [bing.lex_count(p) for p in phrases]
-        bing_count = self.project_sentiment_keys(bing_count,
-                                                 ['NEGATIVE', 'POSITIVE'])
-        
+        if bing:
+            bing_count = [bing.lex_count(p) for p in phrases]
+            bing_count = self.project_sentiment_keys(bing_count,
+                                                     ['NEGATIVE', 'POSITIVE'])
+
         if liwc:
             liwc_count = [liwc.lex_count(p) for p in phrases]
             liwc_sent_count = self.project_sentiment_keys(liwc_count,
@@ -788,25 +801,25 @@ class StrictNgramDedupe(object):
             liwc_other_keys -= set(['POSEMO', 'NEGEMO'])
             liwc_other_count = self.project_sentiment_keys(liwc_count,
                                                            liwc_other_keys)
-        
+
         counts = []
         count_labels = []
-        
+
         if emolex:
             counts.append(emo_emo_count)
             counts.append(emo_sent_count)
             count_labels.append('NRC_EMOTION_')
             count_labels.append('NRC_SENTIMENT_')
-        
+
         counts.append(bing_count)
         count_labels.append('BING_SENTIMENT_')
-        
+
         if liwc:
             counts.append(liwc_sent_count)
             counts.append(liwc_other_count)
             count_labels.append('LIWC_SENTIMENT_')
             count_labels.append('LIWC_ALL_OTHER_')
-        
+
         rows = self.compile_sentiment_groups(counts, count_labels)
 
         for r, p, i in zip(rows, phrases, phrase_indices):
@@ -909,7 +922,7 @@ def process(inputs):
     ngram_size = inputs['n']
     in_file = inputs['i']
     out_prefix = inputs['m']
-    
+
     matrix_out = '{}-most-common-perfect-matches-no-overlap-{}-gram-match-matrix.csv'.format(out_prefix, ngram_size)
     sentiment_out = '{}-most-common-perfect-matches-no-overlap-{}-gram-sentiment.csv'.format(out_prefix, ngram_size)
 
@@ -935,26 +948,26 @@ def project_sentiment_keys_shortform(counts, keys):
 def format_data(io):
     fin = io['s']
     fout = io['o']
-    
+
     markup_script = load_markup_script(fin)
     markup_script = markup_script[1:]
     list_script = [[i] + r for i, r in enumerate(markup_script)]
-      
+
     csv_script = pd.DataFrame(list_script)
-    csv_script.columns = ['ORIGINAL_SCRIPT_INDEX', 
-       'LOWERCASE', 
-       'SPACY_ORTH_ID', 
+    csv_script.columns = ['ORIGINAL_SCRIPT_INDEX',
+       'LOWERCASE',
+       'SPACY_ORTH_ID',
        'SCENE',
        'CHARACTER']
-    
+
     bing_count = [bing.lex_count(j[1]) for j in list_script]
     bing_sentiment_keys = ['NEGATIVE', 'POSITIVE']
     bing_count = project_sentiment_keys_shortform(bing_count, bing_sentiment_keys)
     bing_DF = pd.DataFrame(bing_count)
-    
+
     bing_DF['ORIGINAL_SCRIPT_INDEX'] = csv_script['ORIGINAL_SCRIPT_INDEX']
     out = pd.merge(csv_script, bing_DF, on='ORIGINAL_SCRIPT_INDEX')
-    
+
     if emolex:
         emo_count = [emolex.lex_count(j[1]) for j in list_script]
         emo_sentiment_keys = ['ANTICIPATION', 'ANGER', 'TRUST', 'SADNESS','DISGUST',
@@ -963,23 +976,23 @@ def format_data(io):
         emo_DF = pd.DataFrame(emo_count)
         emo_DF['ORIGINAL_SCRIPT_INDEX'] = csv_script['ORIGINAL_SCRIPT_INDEX']
         out = pd.merge(out, emo_DF, on='ORIGINAL_SCRIPT_INDEX')
-      
+
     if liwc:
         liwc_count = [liwc.lex_count(j[1]) for j in list_script]
-        
+
         liwc_sentiment_keys = ['POSEMO', 'NEGEMO']
         liwc_sent_count = project_sentiment_keys_shortform(liwc_count, liwc_sentiment_keys)
         liwc_sent_DF = pd.DataFrame(liwc_sent_count)
         liwc_sent_DF['ORIGINAL_SCRIPT_INDEX'] = csv_script['ORIGINAL_SCRIPT_INDEX']
         out = pd.merge(out, liwc_sent_DF, on='ORIGINAL_SCRIPT_INDEX')
-        
+
         liwc_other_keys = set(k for ct in liwc_count for k in ct.keys())
         liwc_other_keys -= set(['POSEMO', 'NEGEMO']) #already used these
         liwc_other_count = project_sentiment_keys_shortform(liwc_count, liwc_other_keys)
         liwc_other_DF = pd.DataFrame(liwc_other_count)
         liwc_other_DF['ORIGINAL_SCRIPT_INDEX'] = csv_script['ORIGINAL_SCRIPT_INDEX']
         out = pd.merge(out, liwc_other_DF, on='ORIGINAL_SCRIPT_INDEX')
-    
+
     out.to_csv(fout + '.csv', index=False)
 
 # -----------------------------------------------------------------------------
@@ -987,10 +1000,10 @@ def format_data(io):
 # ------
 
 if __name__ == '__main__':
-    
-    parser = argparse.ArgumentParser(description='process fanworks scraped from Archive of Our Own.') 
+
+    parser = argparse.ArgumentParser(description='process fanworks scraped from Archive of Our Own.')
     subparsers = parser.add_subparsers(help='scrape, clean, getmeta, search, matrix, or format')
-    
+
     #sub-parsers
     scrape_parser = subparsers.add_parser('scrape', help='find and scrape fanfiction works from Archive of Our Own')
     group = scrape_parser.add_mutually_exclusive_group()
@@ -1000,7 +1013,7 @@ if __name__ == '__main__':
     scrape_parser.add_argument('-o', '--out', action='store', default=os.path.join('.','scraped-html'), help="target directory for scraped html files")
     scrape_parser.add_argument('-p', '--startpage', action='store', default=1, type=int, help="page on which to begin downloading (to resume a previous job)")
     scrape_parser.set_defaults(func=scrape)
-    
+
     clean_parser = subparsers.add_parser('clean', help='takes a directory of html files and yields a new directory of text files')
     clean_parser.add_argument('i', action='store', help='directory of input html files to clean')
     clean_parser.add_argument('-o', action='store', default='plain-text', help='target directory for output txt files')
@@ -1010,27 +1023,30 @@ if __name__ == '__main__':
     meta_parser.add_argument('i', action='store', help='directory of input html files to process')
     meta_parser.add_argument('-o', action='store', default='fan-meta', help='filename for metadata csv file')
     meta_parser.set_defaults(func=collect_meta)
-    
+
     search_parser = subparsers.add_parser('search', help='compare fanworks with the original script')
     search_parser.add_argument('d', action='store', help='directory of fanwork text files')
     search_parser.add_argument('s', action='store', help='filename for markup version of script')
     search_parser.set_defaults(func=analyze)
-    
+
     matrix_parser = subparsers.add_parser('matrix', help='deduplicates and builds matrix for best n-gram matches')
     matrix_parser.add_argument('i', action='store', help='input csv file')
     matrix_parser.add_argument('m', action = 'store', help='fandom/movie name for output file prefix')
     matrix_parser.add_argument('-n', action='store', default = 6, help='n-gram size, default is 6-grams')
     matrix_parser.set_defaults(func=process)
-    
+
     data_parser = subparsers.add_parser('format', help='takes a script and outputs a csv with senitment information for each word formatted for javascript visualization')
     data_parser.add_argument('s', action='store', help='filename for markup version of script')
     data_parser.add_argument('-o', action='store', default='js-data', help='filename for csv output file of data formatted for visualization')
     data_parser.set_defaults(func=format_data)
-    
+
     #handle args
     args = parser.parse_args()
-    
+
     #call function
-    if args.func:
+    if hasattr(args, 'func'):
+        spacy_model = spacy.load('en_core_web_lg')
         args.func(vars(args))
-   
+    else:
+        parser.print_help()
+
