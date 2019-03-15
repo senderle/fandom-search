@@ -188,9 +188,25 @@ def collect_meta(io):
 # Utility functions
 # -----------------
 
+def sp_parse_chunks(txt, size=100000):
+    start = 0
+    if len(txt) < 100000:
+        yield _SPACY_MODEL(txt)
+        return
+
+    while start < len(txt):
+        end = start + 100000
+        if end > len(txt):
+            end = len(txt)
+        else:
+            while txt[end] != ' ':
+                end -= 1
+        yield _SPACY_MODEL(txt[start: end])
+        start = end + 1
+
 def mk_vectors(sp_txt):
-    #Given a parsed text in `spacy`'s native format,
-    #produce a sequence of vectors, one per token.
+    # Given a text, parse it into `spacy`'s native format,
+    # and produce a sequence of vectors, one per token.
 
     rows = len(sp_txt)
     cols = len(sp_txt[0].vector) if rows else 0
@@ -200,8 +216,8 @@ def mk_vectors(sp_txt):
         if word.has_vector:
             vectors[i] = word.vector
         else:
-            # `spacy` doesn't have a pre-trained vector for this word
-            # give this word a unique vector
+            # `spacy` doesn't have a pre-trained vector for this word,
+            # so give it a unique random vector.
             w_str = str(word)
             vectors[i] = 0
             vectors[i][hash(w_str) % cols] = 1.0
@@ -276,15 +292,9 @@ def build_lsh_engine(orig, window_size, number_of_hashes, hash_dimensions):
         engine.store_vector(row, (ix, str(orig[ix: ix + window_size])))
     return engine
 
-def multi_search_wrapper(works):
-    return _ANN_INDEX.search(works)
-
-def find_matches_multi(fan_works, pool):
-    chunksize = len(fan_works) // (4 * pool._processes)
-    record_sets = pool.map(multi_search_wrapper, fan_works, chunksize=chunksize)
-    records = []
-    records.extend(r for r_set in record_sets for r in r_set)
-    return records
+def multi_search_wrapper(work):
+    result = _ANN_INDEX.search(work)
+    return result
 
 def find_matches(fan_works, ann_index, pool):
     record_sets = map(ann_index.search, fan_works)
@@ -326,7 +336,8 @@ class AnnIndexSearch(object):
 
     def search(self, filename):
         with open(filename, encoding='utf8') as fan_file:
-            fan = _SPACY_MODEL(fan_file.read())
+            fan = fan_file.read()
+            fan = [t for ch in sp_parse_chunks(fan) for t in ch]
 
         # Create the fan windows:
         fan_vectors = mk_vectors(fan)
@@ -386,7 +397,6 @@ class AnnIndexSearch(object):
         # match that first identified the word.
         for k, dset in duplicate_records.items():
             duplicate_records[k] = min(dset, key=itemgetter(11))
-
         return sorted(duplicate_records.values())
 
 def make_match_strata(records, record_structure, num_strata, max_threshold):
@@ -495,6 +505,7 @@ def analyze(inputs):
     random.seed(4815162342)
     random.shuffle(fan_works)
 
+    # cluster_size = 500
     cluster_size = 500
     start = 0
     fan_clusters = [fan_works[i:i + cluster_size]
@@ -509,16 +520,22 @@ def analyze(inputs):
                                number_of_hashes,
                                hash_dimensions,
                                distance_threshold)
-    global _ANN_INDEX
-    _ANN_INDEX = ann_index
 
     for i, fan_cluster in enumerate(fan_clusters, start=start):
         print('Processing cluster {} ({}-{})'.format(i,
                                                      cluster_size * i,
                                                      cluster_size * (i + 1)))
-        records = find_matches(fan_cluster, ann_index, None)
-        write_records(records, batch_filename.format(i))
-        accumulated_records.extend(records)
+
+        global _ANN_INDEX
+        _ANN_INDEX = ann_index
+        with multiprocessing.Pool(processes=4, maxtasksperchild=10) as pool:
+            chunksize = cluster_size // 25
+            record_sets = pool.map(multi_search_wrapper,
+                                   fan_works,
+                                   chunksize=cluster_size // (4 * pool._processes))
+            records = [r for r_set in record_sets for r in r_set]
+            write_records(records, batch_filename.format(i))
+            accumulated_records.extend(records)
 
     i = 0
     today_str = '-{:%Y%m%d}.csv'.format(datetime.date.today())
@@ -1062,7 +1079,6 @@ if __name__ == '__main__':
     if hasattr(args, 'func'):
         _SPACY_MODEL = spacy.load('en_core_web_md',
                                   disable=['parser', 'tagger', 'ner'])
-        _SPACY_MODEL.max_length = 3000000
         args.func(vars(args))
     else:
         parser.print_help()
