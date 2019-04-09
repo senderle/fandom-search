@@ -32,12 +32,12 @@ try:
     try:
         emolex = lextrie.LexTrie.from_plugin('emolex_en')
     except Exception:
-        pass
+        emolex = None
 
     try:
         liwc = lextrie.LexTrie.from_plugin('liwc')
     except Exception:
-        pass
+        liwc = None
 except ImportError:
     bing = None
     emolex = None
@@ -225,33 +225,6 @@ def mk_vectors(sp_txt):
             vectors[i][hash(w_str * 3) % cols] = 1.0
     return vectors
 
-def cosine_distance(row_values, col_values):
-    """Calculate the cosine distance between two vectors. Also
-    accepts matrices and 2-d arrays, and calculates the
-    distances over the cross product of rows and columns.
-    """
-    verr_msg = '`cosine_distance` is not defined for {}-dimensional arrays.'
-    if len(row_values.shape) == 1:
-        row_values = row_values[None,:]
-    elif len(row_values.shape) != 2:
-        raise ValueError(verr_msg.format(len(row_values.shape)))
-
-    if len(col_values.shape) == 1:
-        col_values = col_values[:,None]
-    elif len(col_values.shape) != 2:
-        raise ValueError(verr_msg.format(len(col_values.shape)))
-
-    row_norm = (row_values * row_values).sum(axis=1) ** 0.5
-    row_norm = row_norm[:,None]
-
-    col_norm = (col_values * col_values).sum(axis=0) ** 0.5
-    col_norm = col_norm[None,:]
-
-    result = row_values @ col_values
-    result /= row_norm
-    result /= col_norm
-    return 1 - result
-
 def build_lsh_engine(orig, window_size, number_of_hashes, hash_dimensions):
     # Build the ngram vectors using rolling windows.
     # Variables named `*_win_vectors` contain vectors for
@@ -295,12 +268,6 @@ def build_lsh_engine(orig, window_size, number_of_hashes, hash_dimensions):
 def multi_search_wrapper(work):
     result = _ANN_INDEX.search(work)
     return result
-
-def find_matches(fan_works, ann_index, pool):
-    record_sets = map(ann_index.search, fan_works)
-    records = []  # list of map of ann_index.search, fanwords
-    records.extend(r for r_set in record_sets for r in r_set)
-    return records
 
 class AnnIndexSearch(object):
     def __init__(self, original_script_filename, window_size,
@@ -398,57 +365,6 @@ class AnnIndexSearch(object):
         for k, dset in duplicate_records.items():
             duplicate_records[k] = min(dset, key=itemgetter(11))
         return sorted(duplicate_records.values())
-
-def make_match_strata(records, record_structure, num_strata, max_threshold):
-    combined_ix = record_structure['fields'].index('BEST_COMBINED_DISTANCE')
-    low = [i / num_strata * max_threshold
-           for i in range(0, num_strata)]
-    high = [i / num_strata * max_threshold
-            for i in range(1, num_strata + 1)]
-    ranges = zip(low, high)
-
-    return [[r for r in records[1:]
-             if r[combined_ix] >= low and r[combined_ix] < high]
-            for low, high in ranges]
-
-def label_match_strata(num_strata, max_threshold):
-    high = [i / num_strata * max_threshold
-            for i in range(1, num_strata + 1)]
-    return ['Number of matches below threshold {:.2}'.format(h)
-            for h in high]
-
-def chart_match_strata(records,
-                       num_strata=5, max_threshold=1,
-                       start=1, end=None,
-                       figsize=(15, 10),
-                       colormap='plasma',
-                       legend=True):
-    match_strata = make_match_strata(records, new_record_structure, num_strata, max_threshold)
-
-    cumulative_strata = [match_strata[0:i] for i in
-                         range(len(match_strata), 0, -1)]
-    match_counters = [Counter(row[4] for matches in strata for row in matches)
-                      for strata in cumulative_strata]
-    maxn = max(max(mc) for mc in match_counters if mc)
-    match_cols = [[mc[n] for mc in match_counters]
-                  for n in range(maxn + 1)]
-
-    col_names = label_match_strata(num_strata, max_threshold)
-    col_names.reverse()
-    df = pd.DataFrame(match_cols,
-                          index = range(maxn + 1),
-                          columns=col_names)
-    df.index.name = 'Word index in original script'
-    df = df.loc[start:end]
-    df.plot(figsize=figsize, colormap=colormap, legend=legend)
-
-def most_frequent_matches(records, n_matches, threshold):
-    ct = Counter(r[3] for r in records if r[-1] < threshold)
-    ix_to_context = {r[3]: r[4] for r in records}
-    matches = ct.most_common(n_matches)
-    return [(i, c, ix_to_context[i])
-            for i, c in matches]
-    return matches
 
 def load_markup_script(filename,
                         _line_rex=re.compile('LINE<<(?P<line>[^>]*)>>'),
@@ -978,6 +894,76 @@ def project_sentiment_keys_shortform(counts, keys):
         return counts
 
 def format_data(io):
+    fin_data = io['d']
+    original_script_markup = fin = io['s']
+    fout = io['o']
+
+    matches = pd.read_csv(fin_data)
+
+    name = 'Frequency of Reuse (Exact)'
+    positive_match = matches.BEST_COMBINED_DISTANCE <= 0
+    matches_thresh = matches.assign(**{name: positive_match})
+
+    thresholds = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
+    threshname = ['Frequency of Reuse (0-{})'.format(str(t)) for t in thresholds]
+    for thresh, name in zip(thresholds, threshname):
+        positive_match = matches.BEST_COMBINED_DISTANCE <= thresh
+        matches_thresh = matches_thresh.assign(**{name: positive_match})
+    thresholds = [0] + thresholds
+    threshname = ['Frequency of Reuse (Exact)'] + threshname
+
+    os_markup_raw = load_markup_script(original_script_markup)
+    os_markup_header = os_markup_raw[0]
+    os_markup_raw = os_markup_raw[1:]
+
+    lt = emolex # LexTrie.from_plugin('emolex_en')
+    emo_terms = ['ANGER',
+                 'ANTICIPATION',
+                 'DISGUST',
+                 'FEAR',
+                 'JOY',
+                 'SADNESS',
+                 'SURPRISE',
+                 'TRUST',
+                 'NEGATIVE',
+                 'POSITIVE']
+
+    pos_terms = ['ANTICIPATION',
+                 'JOY',
+                 'SURPRISE',
+                 'TRUST']
+
+    os_markup_header.extend(emo_terms)
+    for r in os_markup_raw:
+        emos = lt.get_lex_tags(r[0])
+        r.extend(int(t in emos) for t in emo_terms)
+
+    os_markup = pd.DataFrame(os_markup_raw, columns=os_markup_header)
+    os_markup.index.name = 'ORIGINAL_SCRIPT_WORD_INDEX'
+
+    match_word_counts = matches_thresh.groupby(
+        'ORIGINAL_SCRIPT_WORD_INDEX'
+    ).aggregate({
+        name: numpy.sum for name in threshname
+    })
+
+    match_word_counts = match_word_counts.reindex(
+        os_markup.index,
+        fill_value=0
+    )
+
+    match_word_words = matches_thresh.groupby(
+        'ORIGINAL_SCRIPT_WORD_INDEX'
+    ).aggregate({
+        'ORIGINAL_SCRIPT_WORD': numpy.max,
+    })
+
+    match_word_counts = match_word_counts.join(match_word_words)
+
+    match_count = match_word_counts.join(os_markup)
+    match_count.to_csv(fout)
+
+def _format_data_sentiment_only(io):
     fin = io['s']
     fout = io['o']
 
@@ -1069,7 +1055,8 @@ if __name__ == '__main__':
 
     data_parser = subparsers.add_parser('format', help='takes a script and outputs a csv with senitment information for each word formatted for javascript visualization')
     data_parser.add_argument('s', action='store', help='filename for markup version of script')
-    data_parser.add_argument('-o', action='store', default='js-data', help='filename for csv output file of data formatted for visualization')
+    data_parser.add_argument('d', action='store', help='filename for search output')
+    data_parser.add_argument('-o', action='store', default='js-data.csv', help='filename for csv output file of data formatted for visualization')
     data_parser.set_defaults(func=format_data)
 
     #handle args
