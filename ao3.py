@@ -746,8 +746,7 @@ if __name__ == '__main__':
 
     #call function
     if hasattr(args, 'func'):
-        search.get_spacy_model() = spacy.load('en_core_web_md',
-                                  disable=['parser', 'tagger', 'ner'])
+        _SPACY_MODEL = search.get_spacy_model()
         args.func(vars(args))
     else:
         parser.print_help()
