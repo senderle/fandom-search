@@ -185,10 +185,10 @@ class AnnIndexSearch(object):
             # Create a new record with original script
             # information and fan work information.
             for match_ix, match_str, distance in results:
-                fan_context = str(fan[fan_ix: fan_ix + window_size])
+                fan_context = str(fan[fan_ix: fan_ix + self.window_size])
                 lev_d = lev_distance(match_str, fan_context)
 
-                for window_ix in range(window_size):
+                for window_ix in range(self.window_size):
                     fan_word_ix = fan_ix + window_ix
                     fan_word = fan[fan_word_ix].orth_
                     fan_orth_id = fan[fan_word_ix].orth
