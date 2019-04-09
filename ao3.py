@@ -715,12 +715,12 @@ if __name__ == '__main__':
 
     clean_parser = subparsers.add_parser('clean', help='takes a directory of html files and yields a new directory of text files')
     clean_parser.add_argument('input', action='store', help='directory of input html files to clean')
-    clean_parser.add_argument('-o', 'output', action='store', default='plain-text', help='target directory for output txt files')
+    clean_parser.add_argument('-o', '--output', action='store', default='plain-text', help='target directory for output txt files')
     clean_parser.set_defaults(func=convert_dir)
 
     meta_parser = subparsers.add_parser('getmeta', help='takes a directory of html files and yields a csv file containing metadata')
     meta_parser.add_argument('input', action='store', help='directory of input html files to process')
-    meta_parser.add_argument('-o', 'output', action='store', default='fan-meta', help='filename for metadata csv file')
+    meta_parser.add_argument('-o', '--output', action='store', default='fan-meta', help='filename for metadata csv file')
     meta_parser.set_defaults(func=collect_meta)
 
     # Search for reuse
@@ -740,7 +740,7 @@ if __name__ == '__main__':
     data_parser = subparsers.add_parser('format', help='takes a script and outputs a csv with senitment information for each word formatted for javascript visualization')
     data_parser.add_argument('matches', action='store', help='filename for search output')
     data_parser.add_argument('script', action='store', help='filename for markup version of script')
-    data_parser.add_argument('-o', 'output', action='store', default='js-data.csv', help='filename for csv output file of data formatted for visualization')
+    data_parser.add_argument('-o', '--output', action='store', default='js-data.csv', help='filename for csv output file of data formatted for visualization')
     data_parser.set_defaults(func=format_data)
 
     # Generate visualizaiton
@@ -763,10 +763,6 @@ if __name__ == '__main__':
 
     # handle args
     args = parser.parse_args()
-
-    title = 'Average Quantity of Text Reuse by {}-word Section'
-    title = title.format(args.words_per_chunk)
-    args.title = title
 
     # call function
     if hasattr(args, 'func'):

@@ -280,7 +280,10 @@ def save_embed(args):
             op.write('\n')
 
 def save_plot(args):
-    print(args)
+    title = 'Average Quantity of Text Reuse by {}-word Section'
+    title = title.format(args.words_per_chunk)
+    args.title = title
+
     if args.static:
         save_static(args)
     else:
