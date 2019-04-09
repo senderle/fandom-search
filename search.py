@@ -268,15 +268,15 @@ def write_records(records, filename):
         wr = csv.writer(out)
         wr.writerows(records)
 
-def analyze(inputs,
+def analyze(args,
             window_size=6,
             number_of_hashes=15,  # Bigger -> slower (linear), more matches
             hash_dimensions=14,   # Bigger -> faster (???), fewer matches
             distance_threshold=0.1,
             chunk_size=500
             ):
-    fan_work_directory = inputs['d']
-    original_script_markup = inputs['s']
+    fan_work_directory = args.fan_works
+    original_script_markup = args.script
 
     fan_works = os.listdir(fan_work_directory)
     fan_works = [os.path.join(fan_work_directory, f)
@@ -326,5 +326,3 @@ def analyze(inputs,
 
     write_records(accumulated_records,
                   name_check)
-
-

@@ -13,12 +13,11 @@ from time import sleep
 
 import numpy
 import pandas as pd
-from Levenshtein import distance as lev_distance
 from bs4 import BeautifulSoup
 
 import search
+import vis
 
-import spacy
 _SPACY_MODEL = None  # Model to be loaded later, after we know we need it.
 _ANN_INDEX = None
 
@@ -59,9 +58,9 @@ def get_fan_work(fan_html_name):
     fan_txt = re.sub(r'\s+', ' ', fan_txt).strip()
     return fan_txt
 
-def convert_dir(io):
-    html_dir = io['i']
-    out_dir = io['o']
+def convert_dir(args):
+    html_dir = args.input
+    out_dir = args.output
 
     try:
         os.makedirs(out_dir)
@@ -122,9 +121,9 @@ def get_fan_meta(fan_html_name):
             date, language, tags]
     return dict(zip(meta_headers, vals))
 
-def collect_meta(io):
-    in_dir = io['i']
-    out_file = io['o']
+def collect_meta(args):
+    in_dir = args.input
+    out_file = args.output
 
     errors = []
     rows = []
@@ -223,12 +222,12 @@ def request_loop(url, timeout=4.0, sleep_base=1.0):
     else:
         return None
 
-def scrape(io):
-    search_term = io['search']
-    tag = io['tag']
-    header = io['url']
-    out_dir = io['out']
-    end = io['startpage']
+def scrape(args):
+    search_term = args.search
+    tag = args.tag
+    header = args.url
+    out_dir = args.out
+    end = args.startpage
 
     # tag scraping option
     if search_term:
@@ -575,12 +574,12 @@ def project_sentiment_keys_shortform(counts, keys):
                 ct['UNDETERMINED'] = 0
         return counts
 
-def format_data(io):
-    fin_data = io['d']
-    original_script_markup = fin = io['s']
-    fout = io['o']
+def format_data(args):
+    original_script_markup = args.script
+    match_table = args.matches
+    output = args.output
 
-    matches = pd.read_csv(fin_data)
+    matches = pd.read_csv(match_table)
 
     name = 'Frequency of Reuse (Exact)'
     positive_match = matches.BEST_COMBINED_DISTANCE <= 0
@@ -594,7 +593,7 @@ def format_data(io):
     thresholds = [0] + thresholds
     threshname = ['Frequency of Reuse (Exact)'] + threshname
 
-    os_markup_raw = load_markup_script(original_script_markup)
+    os_markup_raw = search.load_markup_script(original_script_markup)
     os_markup_header = os_markup_raw[0]
     os_markup_raw = os_markup_raw[1:]
 
@@ -643,13 +642,13 @@ def format_data(io):
     match_word_counts = match_word_counts.join(match_word_words)
 
     match_count = match_word_counts.join(os_markup)
-    match_count.to_csv(fout)
+    match_count.to_csv(output)
 
-def _format_data_sentiment_only(io):
-    fin = io['s']
-    fout = io['o']
+def _format_data_sentiment_only(args):
+    fin = args.s
+    fout = args.o
 
-    markup_script = load_markup_script(fin)
+    markup_script = search.load_markup_script(fin)
     markup_script = markup_script[1:]
     list_script = [[i] + r for i, r in enumerate(markup_script)]
 
@@ -715,39 +714,63 @@ if __name__ == '__main__':
     scrape_parser.set_defaults(func=scrape)
 
     clean_parser = subparsers.add_parser('clean', help='takes a directory of html files and yields a new directory of text files')
-    clean_parser.add_argument('i', action='store', help='directory of input html files to clean')
-    clean_parser.add_argument('-o', action='store', default='plain-text', help='target directory for output txt files')
+    clean_parser.add_argument('input', action='store', help='directory of input html files to clean')
+    clean_parser.add_argument('-o', 'output', action='store', default='plain-text', help='target directory for output txt files')
     clean_parser.set_defaults(func=convert_dir)
 
     meta_parser = subparsers.add_parser('getmeta', help='takes a directory of html files and yields a csv file containing metadata')
-    meta_parser.add_argument('i', action='store', help='directory of input html files to process')
-    meta_parser.add_argument('-o', action='store', default='fan-meta', help='filename for metadata csv file')
+    meta_parser.add_argument('input', action='store', help='directory of input html files to process')
+    meta_parser.add_argument('-o', 'output', action='store', default='fan-meta', help='filename for metadata csv file')
     meta_parser.set_defaults(func=collect_meta)
 
+    # Search for reuse
     search_parser = subparsers.add_parser('search', help='compare fanworks with the original script')
-    search_parser.add_argument('d', action='store', help='directory of fanwork text files')
-    search_parser.add_argument('s', action='store', help='filename for markup version of script')
+    search_parser.add_argument('fan_works', action='store', help='directory of fanwork text files')
+    search_parser.add_argument('script', action='store', help='filename for markup version of script')
     search_parser.set_defaults(func=search.analyze)
 
+    # Create n-gram matrices (deprecated)
     matrix_parser = subparsers.add_parser('matrix', help='deduplicates and builds matrix for best n-gram matches')
     matrix_parser.add_argument('i', action='store', help='input csv file')
     matrix_parser.add_argument('m', action = 'store', help='fandom/movie name for output file prefix')
-    matrix_parser.add_argument('-n', action='store', default = 6, help='n-gram size, default is 6-grams')
+    matrix_parser.add_argument('-n', action='store', default=6, help='n-gram size, default is 6-grams')
     matrix_parser.set_defaults(func=process)
 
+    # Aggregate word-level counts
     data_parser = subparsers.add_parser('format', help='takes a script and outputs a csv with senitment information for each word formatted for javascript visualization')
-    data_parser.add_argument('s', action='store', help='filename for markup version of script')
-    data_parser.add_argument('d', action='store', help='filename for search output')
-    data_parser.add_argument('-o', action='store', default='js-data.csv', help='filename for csv output file of data formatted for visualization')
+    data_parser.add_argument('matches', action='store', help='filename for search output')
+    data_parser.add_argument('script', action='store', help='filename for markup version of script')
+    data_parser.add_argument('-o', 'output', action='store', default='js-data.csv', help='filename for csv output file of data formatted for visualization')
     data_parser.set_defaults(func=format_data)
 
-    #handle args
+    # Generate visualizaiton
+    vis_parser = subparsers.add_parser('vis',
+                                       help='takes a formatted data csv '
+                                            'and generates an embeddable '
+                                            'visualization')
+    vis_parser.add_argument('input', action='store',
+                            help='the data csv to use for generating the '
+                                 'visualization')
+    vis_parser.add_argument('-s', '--static', action='store_true',
+                            default=False,
+                            help="save a full html file")
+    vis_parser.add_argument('-o', '--output', action='store',
+                            default='reuse.html',
+                            help="output filename")
+    vis_parser.add_argument('-w', '--words-per-chunk', type=int, default=140,
+                            help='number of words per script segment')
+    vis_parser.set_defaults(func=vis.save_plot)
+
+    # handle args
     args = parser.parse_args()
 
-    #call function
+    title = 'Average Quantity of Text Reuse by {}-word Section'
+    title = title.format(args.words_per_chunk)
+    args.title = title
+
+    # call function
     if hasattr(args, 'func'):
         _SPACY_MODEL = search.get_spacy_model()
-        args.func(vars(args))
+        args.func(args)
     else:
         parser.print_help()
-
