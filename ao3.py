@@ -531,7 +531,7 @@ def analyze(inputs):
         with multiprocessing.Pool(processes=4, maxtasksperchild=10) as pool:
             chunksize = cluster_size // 25
             record_sets = pool.map(multi_search_wrapper,
-                                   fan_works,
+                                   fan_cluster,
                                    chunksize=cluster_size // (4 * pool._processes))
             records = [r for r_set in record_sets for r in r_set]
             write_records(records, batch_filename.format(i))
