@@ -16,6 +16,7 @@ from bokeh.palettes import Spectral6
 _FIELDS = ['Frequency of Reuse (Exact)',
            'Frequency of Reuse (0-0.1)',
            'Frequency of Reuse (0-0.25)',
+           'No Comparison',
            'ANGER',
            'ANTICIPATION',
            'DISGUST',
@@ -28,7 +29,7 @@ _FIELDS = ['Frequency of Reuse (Exact)',
            'POSITIVE']
 
 _AGG_FUNCS = [lambda x: gmean(x + 1)] * 3
-_AGG_FUNCS += [mean] * 10
+_AGG_FUNCS += [mean] * 11
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -111,6 +112,9 @@ def chart_cols(fandom_data, words_per_chunk):
     wform = word_formatter()
     spans = list(map(wform, words, prevwords, chars, newchar, newscene, highlights))
 
+    fandom_data = fandom_data.assign(
+        **{'No Comparison': fandom_data[_FIELDS[0]].values * 0}
+    )
     chart_cols = fandom_data[_FIELDS]
     chart_cols = chart_cols.assign(chunk=chunks)
     chart_cols = chart_cols.assign(span=spans)
@@ -156,10 +160,11 @@ def build_plot(data_path, words_per_chunk, title='Reuse'):
     flat_data = chart_pivot(flat_data)
 
     reuse_y = flat_data['Frequency of Reuse (Exact)']
-    emo_y = flat_data['ANGER']
+    emo_y = flat_data['No Comparison']
     reuse_max = reuse_y.values.max()
     emo_max = emo_y.values.max()
     ratio = max(reuse_max, emo_max) / min(reuse_max, emo_max)
+    ratio = ratio if emo_max > 0 else 1
     to_scale = reuse_y if reuse_max < emo_max else emo_y
     to_scale *= ratio
 
@@ -238,7 +243,11 @@ def build_plot(data_path, words_per_chunk, title='Reuse'):
             ratio = emo_max / reuse_max;
         } else {
             to_scale = emo_data;
-            ratio = reuse_max / emo_max;
+            if (emo_max > 0) {
+                ratio = reuse_max / emo_max;
+            } else {
+                ratio = 1;
+            }
         }
         for (var i = 0; i < to_scale.length; i++) {
             to_scale[i] *= ratio;

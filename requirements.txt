@@ -3,5 +3,7 @@ nearpy
 spacy
 requests
 bs4
+lxml
 python-Levenshtein
+bokeh
 https://github.com/senderle/lextrie/archive/master.zip
