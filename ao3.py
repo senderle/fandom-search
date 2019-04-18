@@ -531,3 +531,4 @@ if __name__ == '__main__':
         _SPACY_MODEL = search.get_spacy_model()
         args.func(args)
     else:
+        parser.print_help()
