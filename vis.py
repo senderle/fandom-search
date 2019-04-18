@@ -1,4 +1,5 @@
 import argparse
+import math
 import pandas as pd
 from scipy.stats import gmean
 from numpy import mean
@@ -31,6 +32,7 @@ _FIELDS = ['Frequency of Reuse (Exact)',
 _AGG_FUNCS = [lambda x: gmean(x + 1)] * 3
 _AGG_FUNCS += [mean] * 11
 
+# Possibly dead code now. TODO: Check and if so, remove.
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--static', action='store_true',
@@ -72,6 +74,11 @@ def word_formatter(names=None):
         if new_char:
             parts.append('\n')
             parts.append(span(' ' + character.upper() + ': '))
+
+        # Pandas annoyingly converts the string 'nan' into a floating
+        # point nan value, even in an all-string column.
+        if isinstance(word, float) and math.isnan(word):
+            word = 'nan'
 
         if word in punctuation or word in contractions:
             # no space before punctuation

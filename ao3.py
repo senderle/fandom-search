@@ -378,11 +378,6 @@ def format_data(args):
                  'NEGATIVE',
                  'POSITIVE']
 
-    pos_terms = ['ANTICIPATION',
-                 'JOY',
-                 'SURPRISE',
-                 'TRUST']
-
     os_markup_header.extend(emo_terms)
     for r in os_markup_raw:
         emos = lt.get_lex_tags(r[0])
