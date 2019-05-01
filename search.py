@@ -3,6 +3,7 @@ import datetime
 import csv
 import os
 import re
+import sys
 import random
 from operator import itemgetter
 from collections import defaultdict
@@ -224,10 +225,73 @@ class AnnIndexSearch(object):
             duplicate_records[k] = min(dset, key=itemgetter(11))
         return sorted(duplicate_records.values())
 
+def validate_markup_script(filename,
+                           interactive=False,
+                           _unbalanced_l=re.compile('<<[^>]*<<'),
+                           _unbalanced_r=re.compile('>>[^<]*>>'),
+                           _tags=re.compile('>>\s*([^<]*)\s*<<')):
+    with open(filename, encoding='utf-8') as ip:
+        script = ip.read()
+
+    print('Checking script for markup errors.')
+    print()
+
+    errs = False
+    unbal_l = _unbalanced_l.findall(script)
+    if unbal_l:
+        print('Unbalanced left tag delimiters:')
+        for m in _unbalanced_l.finditer(script):
+            line = script[:m.start() + 1].count('\n') + 1
+            print('  On line {}'.format(line))
+            print('    {}'.format(m.group().strip()))
+        errs = True
+        print()
+
+    unbal_r = _unbalanced_r.findall(script)
+    if unbal_r:
+        print('Unbalanced right tag delimiters:')
+        for m in _unbalanced_r.finditer(script):
+            line = script[:m.start() + 1].count('\n') + 1
+            print('  On line {}'.format(line))
+            print('    {}'.format(m.group().strip()))
+        errs = True
+        print()
+
+    tag_set = set(t.strip() for t in _tags.findall(script))
+    expected_tags = set(('LINE', 'DIRECTION', 'SCENE_NUMBER', 'SCENE_DESCRIPTION', 'CHARACTER_NAME'))
+    if tag_set - expected_tags:
+        print('Unexpected tag labels:')
+        for m in _tags.finditer(script):
+            if m.group(1).strip() not in expected_tags:
+                line = script[:m.start(1) + 1].count('\n') + 1
+                print('  On line {}'.format(line))
+                print('    {}'.format(m.group(1).strip()))
+        errs = True
+        print()
+
+    if not errs:
+        print('No markup errors found.')
+        return True
+    elif interactive and errs:
+        print('Errors were found in the script markup. Do you want to continue? (Default is no.)')
+        print()
+        r = ''
+        while r.lower() not in ('y', 'yes', 'n', 'no'):
+            r = input('Enter y for yes or n for no: ')
+            if not r.strip():
+                r = 'n'
+        return r.lower() in ('y', 'yes')
+    else:
+        return False
+
+def validate_cmd(args):
+    return validate_markup_script(args.script)
+
 def load_markup_script(filename,
                         _line_rex=re.compile('LINE<<(?P<line>[^>]*)>>'),
                         _scene_rex=re.compile('SCENE_NUMBER<<(?P<scene>[^>]*)>>'),
                         _char_rex=re.compile('CHARACTER_NAME<<(?P<character>[^>]*)>>')):
+
     with open(filename, encoding='utf-8') as ip:
         spacy_model = get_spacy_model()
 

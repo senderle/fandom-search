@@ -484,10 +484,15 @@ if __name__ == '__main__':
     meta_parser.add_argument('-o', '--output', action='store', default='fan-meta', help='filename for metadata csv file')
     meta_parser.set_defaults(func=collect_meta)
 
+    validate_parser = subparsers.add_parser('validate', help='validate script markup')
+    validate_parser.add_argument('script', action='store', help='filename for markup version of script')
+    validate_parser.set_defaults(func=search.validate_cmd)
+
     # Search for reuse
     search_parser = subparsers.add_parser('search', help='compare fanworks with the original script')
     search_parser.add_argument('fan_works', action='store', help='directory of fanwork text files')
     search_parser.add_argument('script', action='store', help='filename for markup version of script')
+    search_parser.add_argument('-n', '--num-works', default=-1, type=int, help="number of works to search (for subsampling)")
     search_parser.set_defaults(func=search.analyze)
 
     # Aggregate word-level counts
