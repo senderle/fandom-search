@@ -18,9 +18,6 @@ from bs4 import BeautifulSoup
 import search
 import vis
 
-_SPACY_MODEL = None  # Model to be loaded later, after we know we need it.
-_ANN_INDEX = None
-
 try:
     import lextrie
     bing = lextrie.LexTrie.from_plugin('bing')
@@ -523,7 +520,6 @@ if __name__ == '__main__':
 
     # call function
     if hasattr(args, 'func'):
-        _SPACY_MODEL = search.get_spacy_model()
         args.func(args)
     else:
         parser.print_help()
