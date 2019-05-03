@@ -1,6 +1,7 @@
 import argparse
 import math
 import pandas as pd
+import numpy
 from scipy.stats import gmean
 from numpy import mean
 
@@ -104,6 +105,8 @@ def chart_cols(fandom_data, words_per_chunk):
     chars = fandom_data['CHARACTER'].tolist()
     newchar = fandom_data['CHARACTER'][:-1].values != fandom_data['CHARACTER'][1:].values
     newchar = [True] + list(newchar)
+    newscene = fandom_data['SCENE'].values
+    newscene[numpy.isnan(newscene)] = 0
     newscene = fandom_data['SCENE'][:-1].values != fandom_data['SCENE'][1:].values
     newscene = [False] + list(newscene)
 
@@ -114,7 +117,8 @@ def chart_cols(fandom_data, words_per_chunk):
     for h, c in zip(highlights, chunks):
         if c not in chunkmax or chunkmax[c] < h:
             chunkmax[c] = h
-    highlights = [h / chunkmax[c] for h, c in zip(highlights, chunks)]
+    highlights = [(h / chunkmax[c] if chunkmax[c] > 0 else 0)
+                  for h, c in zip(highlights, chunks)]
 
     wform = word_formatter()
     spans = list(map(wform, words, prevwords, chars, newchar, newscene, highlights))
@@ -166,15 +170,20 @@ def build_plot(data_path, words_per_chunk, title='Reuse'):
     flat_data = chart_cols(flat_data, words_per_chunk)
     flat_data = chart_pivot(flat_data)
 
+    # Scale so that both maxima have the same height
     reuse_y = flat_data['Frequency of Reuse (Exact)']
     emo_y = flat_data['No Comparison']
     reuse_max = reuse_y.values.max()
     emo_max = emo_y.values.max()
-    ratio = max(reuse_max, emo_max) / min(reuse_max, emo_max)
-    ratio = ratio if emo_max > 0 else 1
+
+    ratio_denom = min(reuse_max, emo_max)
+    ratio_num = max(reuse_max, emo_max)
+    ratio = ratio_num / ratio_denom if ratio_denom > 0 else 1
+
     to_scale = reuse_y if reuse_max < emo_max else emo_y
     to_scale *= ratio
 
+    # Create data columns
     grouped_x = [(str(x), key)
                  for x in flat_data.index
                  for key in ('Reuse', 'Emotion')]
