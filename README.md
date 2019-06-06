@@ -6,9 +6,9 @@ searching for n-gram matches in the fanworks.
 The basic workflow is below. This assumes you have a `scripts` folder, 
 a `fanworks` folder, and a `results` folder, with a particular structure
 that can be inferred from the example commands below. (Sorry, very busy!)
-Take "sw-all" to be a stand-in for a folder of fan works, "sw-new-hope.txt"
-to be a stand-in for a correctly formatted script, and "sw-new-hope" (without
-the .txt) to be a stand-in for the results folder for the given movie.
+Take `sw-all` to be a stand-in for a folder of fan works, `sw-new-hope.txt`
+to be a stand-in for a correctly formatted script, and `sw-new-hope` (without
+the `.txt`) to be a stand-in for the results folder for the given movie.
 
 A todo for this repo is to create options for where to save error and 
 log files, and search results.
@@ -34,7 +34,7 @@ scrape went OK, and then move the (generically named) error file to
 
 The clean command will save an error file; check to see that the cleaning
 process went OK, and then move the error file (this time in the root dir)
-from `clean-html-errors.txt` to `sw-all-clean-errors.txt'
+from `clean-html-errors.txt` to `sw-all-clean-errors.txt`
 
 * Perform the reuse search
 
@@ -50,7 +50,7 @@ results are still usable.
 
 If the search completes without any errors, the final aggregated data will
 be in a file with a date timestamp in YYYYMMDD format. It will be something 
-like "match-6gram-20190604." Create a new folder `results/sw-all/20190604/`, 
+like `match-6gram-20190604.` Create a new folder `results/sw-all/20190604/`, 
 and move all the CSV files into that folder.
 
 * Aggregate the results over the script (i.e. "format" the results)
