@@ -18,9 +18,9 @@ especially of the script format, which is idiosyncratic but effective.
 
 * Scrape AO3 (Ooops! Currently broken!)
 
-    python ao3.py scrape \
-        -t "Star Wars - All Media Types" \
-        -o fanworks/sw-all/html
+        python ao3.py scrape \
+            -t "Star Wars - All Media Types" \
+            -o fanworks/sw-all/html
 
 The scrape command will save log and error files; check to see that the
 scrape went OK, and then move the (generically named) error file to
@@ -28,9 +28,9 @@ scrape went OK, and then move the (generically named) error file to
 
 * Clean the HTML
 
-    python ao3.py clean \
-        fanworks/sw-all/html/ \
-        -o fanworks/sw-all/plaintext/
+        python ao3.py clean \
+            fanworks/sw-all/html/ \
+            -o fanworks/sw-all/plaintext/
 
 The clean command will save an error file; check to see that the cleaning
 process went OK, and then move the error file (this time in the root dir)
@@ -38,9 +38,9 @@ from `clean-html-errors.txt` to `sw-all-clean-errors.txt'
 
 * Perform the reuse search
 
-    python ao3.py search \
-        fanworks/sw-all/ \
-        scripts/sw-new-hope.txt
+        python ao3.py search \
+            fanworks/sw-all/ \
+            scripts/sw-new-hope.txt
 
 The search command will create sevaral (and in some case, many, even hundreds)
 of separate CSV files. Each one contains the results for 500 fan works. They
@@ -53,18 +53,22 @@ be in a file with a date timestamp in YYYYMMDD format. It will be something
 like "match-6gram-20190604." Create a new folder `results/sw-all/20190604/`, 
 and move all the CSV files into that folder.
 
-    python ao3.py format \
-        results/sw-new-hope/20190604/match-6gram-20190604.csv \
-        scripts/sw-new-hope.txt \
-        -o results/sw-new-hope/fandom-data-new-hope.csv
+* Aggregate the results over the script (i.e. "format" the results)
 
-    python ao3.py vis \
-        results/sw-new-hope/fandom-data-new-hope.csv \
-        -o results/sw-new-hope/new_hope_reuse.html
+        python ao3.py format \
+            results/sw-new-hope/20190604/match-6gram-20190604.csv \
+            scripts/sw-new-hope.txt \
+            -o results/sw-new-hope/fandom-data-new-hope.csv
+
+* Create a Bokeh visualization of the aggregated results
+
+        python ao3.py vis \
+            results/sw-new-hope/fandom-data-new-hope.csv \
+            -o results/sw-new-hope/new_hope_reuse.html
 
 
-This is not a perfect workflow and needs to be tidied up in several ways
-that I will get to when I get to them.
+This is not a perfect workflow and needs to be tidied up in several ways. I 
+will get around to that someday.
 
 ```
 usage: ao3.py [-h] {scrape,clean,getmeta,search,matrix,format} ...
