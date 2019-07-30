@@ -317,7 +317,6 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
     x = [str(i) for i in flat_data.index]
     reuse_zero = len(reuse_y) * [0]
     span = flat_data.span
-
     flat_data_source = ColumnDataSource(flat_data)
     source = ColumnDataSource(dict(x=x,
                                    emo_y=emo_y,
@@ -348,16 +347,18 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
     hover.tooltips = "<div>@span{safe}</div>"
 
     plot.varea(x='x', source = source, y1 = 'reuse_y', y2 = 'reuse_zero', fill_color = Spectral6[0], fill_alpha = 0.6)
-    plot.line(x='x', line_width=1.0, source=source, y='emo_y', line_color = Spectral6[1])
+    plot.line(x='x', line_width=2.0, source=source, y='emo_y', line_color = Spectral6[1])
 
     reuse_button_group = RadioButtonGroup(
         labels=_FIELDS[:3],
-        active=0
+        active=0,
+        button_type='primary'
     )
 
     emotion_button_group = RadioButtonGroup(
         labels=_FIELDS[3:],
-        active=0
+        active=0,
+        button_type='success'
     )
 
     callback = CustomJS(
