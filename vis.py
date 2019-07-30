@@ -30,7 +30,7 @@ _FIELDS = ['Frequency of Reuse (Exact)',
            'NEGATIVE',
            'POSITIVE']
 
-_AGG_FUNCS = [lambda x: gmean(x + 1)] * 3
+_AGG_FUNCS = [lambda x: gmean(x + 1) - 1] * 3
 _AGG_FUNCS += [mean] * 11
 
 # Possibly dead code now. TODO: Check and if so, remove.
@@ -165,7 +165,8 @@ def chart_pivot(chart_cols):
         aggfunc=dict(zip(fields, aggfuncs))
     )
 
-def build_plot(data_path, words_per_chunk, title='Reuse'):
+def build_bar_plot(data_path, words_per_chunk, title='Reuse'):
+    #Read in from csv
     flat_data = pd.read_csv(data_path)
     flat_data = chart_cols(flat_data, words_per_chunk)
     flat_data = chart_pivot(flat_data)
@@ -176,6 +177,7 @@ def build_plot(data_path, words_per_chunk, title='Reuse'):
     reuse_max = reuse_y.values.max()
     emo_max = emo_y.values.max()
 
+    #Make ratio work
     ratio_denom = min(reuse_max, emo_max)
     ratio_num = max(reuse_max, emo_max)
     ratio = ratio_num / ratio_denom if ratio_denom > 0 else 1
@@ -226,6 +228,7 @@ def build_plot(data_path, words_per_chunk, title='Reuse'):
               fill_color=factor_cmap('x', palette=Spectral6,
                                      factors=['Reuse', 'Emotion'],
                                      start=1, end=2))
+
 
     reuse_button_group = RadioButtonGroup(
         labels=_FIELDS[:3],
@@ -290,15 +293,137 @@ def build_plot(data_path, words_per_chunk, title='Reuse'):
 
     return layout
 
+def build_line_plot(data_path, words_per_chunk, title='Reuse'):
+    #Read in from csv
+    flat_data = pd.read_csv(data_path)
+    flat_data = chart_cols(flat_data, words_per_chunk)
+    flat_data = chart_pivot(flat_data)
+
+    # Scale so that both maxima have the same height
+    reuse_y = flat_data['Frequency of Reuse (Exact)']
+    emo_y = flat_data['No Comparison']
+    reuse_max = reuse_y.values.max()
+    emo_max = emo_y.values.max()
+
+    #Make ratio work
+    ratio_denom = min(reuse_max, emo_max)
+    ratio_num = max(reuse_max, emo_max)
+    ratio = ratio_num / ratio_denom if ratio_denom > 0 else 1
+
+    to_scale = reuse_y if reuse_max < emo_max else emo_y
+    to_scale *= ratio
+
+    # Create data columns
+    x = [str(i) for i in flat_data.index]
+    reuse_zero = len(reuse_y) * [0]
+    span = flat_data.span
+
+    flat_data_source = ColumnDataSource(flat_data)
+    source = ColumnDataSource(dict(x=x,
+                                   emo_y=emo_y,
+                                   reuse_zero=reuse_zero,
+                                   reuse_y=reuse_y,
+                                   span=span))
+
+    plot = figure(x_range=FactorRange(*x),
+                  plot_width=800, plot_height=600,
+                  title=title, tools="hover")
+
+    # Turn off ticks, major labels, and x grid lines, etc.
+    # Axis settings:
+    plot.xaxis.major_label_text_font_size = '0pt'
+    plot.xaxis.major_tick_line_color = None
+    plot.xaxis.minor_tick_line_color = None
+
+    # CategoricalAxis settings:
+    plot.xaxis.group_text_font_size = '0pt'
+    plot.xaxis.separator_line_color = None
+
+    # Grid settings:
+    plot.xgrid.grid_line_color = None
+    plot.ygrid.minor_grid_line_color = 'black'
+    plot.ygrid.minor_grid_line_alpha = 0.03
+
+    hover = plot.select(dict(type=HoverTool))
+    hover.tooltips = "<div>@span{safe}</div>"
+
+    plot.varea(x='x', source = source, y1 = 'reuse_y', y2 = 'reuse_zero', fill_color = Spectral6[0], fill_alpha = 0.6)
+    plot.line(x='x', line_width=1.0, source=source, y='emo_y', line_color = Spectral6[1])
+
+    reuse_button_group = RadioButtonGroup(
+        labels=_FIELDS[:3],
+        active=0
+    )
+
+    emotion_button_group = RadioButtonGroup(
+        labels=_FIELDS[3:],
+        active=0
+    )
+
+    callback = CustomJS(
+        args=dict(
+            source=source,
+            flat_data_source=flat_data_source,
+            reuse_button_group=reuse_button_group,
+            emotion_button_group=emotion_button_group
+        ),
+        code="""
+        var reuse = reuse_button_group.labels[reuse_button_group.active];
+        var emo = emotion_button_group.labels[emotion_button_group.active];
+        var reuse_data = flat_data_source.data[reuse].slice();  // Copy
+        var emo_data = flat_data_source.data[emo].slice();      // Copy
+        var reuse_max = Math.max.apply(Math, reuse_data);
+        var emo_max = Math.max.apply(Math, emo_data);
+
+        var ratio = 0;
+        var to_scale = null;
+        if (emo_max > reuse_max) {
+            to_scale = reuse_data;
+            ratio = emo_max / reuse_max;
+        } else {
+            to_scale = emo_data;
+            if (emo_max > 0) {
+                ratio = reuse_max / emo_max;
+            } else {
+                ratio = 1;
+            }
+        }
+        for (var i = 0; i < to_scale.length; i++) {
+            to_scale[i] *= ratio;
+        }
+
+        var x = source.data['x'];
+        var reuse_y = source.data['reuse_y'];
+        var emo_y = source.data['emo_y']
+        for (var i = 0; i < x.length; i++) {
+            reuse_y[i] = reuse_data[i];
+            emo_y[i] = emo_data[i];
+        }
+        source.change.emit();
+        """
+    )
+    reuse_button_group.js_on_change('active', callback)
+    emotion_button_group.js_on_change('active', callback)
+
+    layout = column(reuse_button_group, emotion_button_group, plot)
+
+    return layout
+
+def build_plot(args):
+    if args.lineplot:
+        return build_line_plot(args.input, args.words_per_chunk)
+    else:
+        return build_bar_plot(args.input, args.words_per_chunk)
+
 def save_static(args):
-    plot = build_plot(args.input, args.words_per_chunk)
+    plot = build_plot(args)
     file_html(plot, CDN, args.title)
     output_file(args.output,
                 title=args.title, mode="cdn")
     save(plot)
 
 def save_embed(args):
-    plot = build_plot(args.input, args.words_per_chunk)
+    plot = build_plot(args)
     with open(args.output, 'w', encoding='utf-8') as op:
         for c in components(plot):
             op.write(c)

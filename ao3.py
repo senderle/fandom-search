@@ -518,6 +518,8 @@ if __name__ == '__main__':
                             help="output filename")
     vis_parser.add_argument('-w', '--words-per-chunk', type=int, default=140,
                             help='number of words per script segment')
+    vis_parser.add_argument('-l', '--lineplot', action='store_true', default=False,
+                            help='Using a line plot or a bar plot')
     vis_parser.set_defaults(func=vis.save_plot)
 
     # handle args
