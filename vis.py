@@ -324,7 +324,6 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
     reuse_y=reuse_y
     reuse_zero = len(reuse_y) * [0]
     span = flat_data.span
-
     flat_data_source = ColumnDataSource(flat_data)
     source = ColumnDataSource(dict(x=x,
                                    reuse_y=reuse_y,
