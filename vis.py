@@ -10,7 +10,7 @@ from bokeh.io import curdoc, output_file, save
 from bokeh.resources import CDN
 from bokeh.embed import file_html, components
 from bokeh.layouts import row, column
-from bokeh.models import HoverTool, CustomJS, ColumnDataSource, FactorRange
+from bokeh.models import HoverTool, CustomJS, ColumnDataSource, FactorRange, Panel, Tabs
 from bokeh.models.widgets import RadioButtonGroup
 from bokeh.transform import factor_cmap
 from bokeh.palettes import Spectral6
@@ -291,8 +291,8 @@ def build_bar_plot(data_path, words_per_chunk, title='Reuse'):
     emotion_button_group.js_on_change('active', callback)
 
     layout = column(reuse_button_group, emotion_button_group, plot)
-
-    return layout
+    tab1 = Panel(child=layout, title='Bar')
+    return tab1
 
 def build_line_plot(data_path, words_per_chunk, title='Reuse'):
     #Read in from csv
@@ -357,8 +357,8 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
 
     plot.varea(x='x', source = source, y1 = 'reuse_y', y2 = 'reuse_zero', fill_color = Spectral6[0], fill_alpha = 0.6)
     plot.line(x='x', source = source, y = 'reuse_y', line_color = Spectral6[0], line_alpha = 0.0)
-    plot.line(x='x', line_width=1.0, source=source, y='emo_y', line_color = Spectral6[1])
-    plot.line(x='x', line_width=1.0, source=source, y='emo2_y', line_color = 'red')
+    plot.line(x='x', line_width=2.0, source=source, y='emo_y', line_color = Spectral6[1])
+    plot.line(x='x', line_width=2.0, source=source, y='emo2_y', line_color = 'red')
 
 
     reuse_button_group = RadioButtonGroup(
@@ -472,14 +472,11 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
 
 
     layout = column(reuse_button_group, emotion_button_group, emotion2_button_group, plot)
-
-    return layout
+    tab1 = Panel(child=layout, title='Line')
+    return tab1
 
 def build_plot(args):
-    if args.lineplot:
-        return build_line_plot(args.input, args.words_per_chunk)
-    else:
-        return build_bar_plot(args.input, args.words_per_chunk)
+    return Tabs(tabs=[build_line_plot(args.input, args.words_per_chunk),build_bar_plot(args.input, args.words_per_chunk)])
 
 def save_static(args):
     plot = build_plot(args)
