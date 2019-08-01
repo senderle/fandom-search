@@ -424,7 +424,7 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
         }
 
         source.change.emit();
-        if (third_button_group.active == 0 || emotion_button_group.active == 0) {
+        if (emotion2_button_group.active == 0 || emotion_button_group.active == 0) {
             return;
         }
 
