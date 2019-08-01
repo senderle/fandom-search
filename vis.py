@@ -14,6 +14,7 @@ from bokeh.models import HoverTool, CustomJS, ColumnDataSource, FactorRange
 from bokeh.models.widgets import RadioButtonGroup
 from bokeh.transform import factor_cmap
 from bokeh.palettes import Spectral6
+from bokeh.events import ButtonClick
 
 _FIELDS = ['Frequency of Reuse (Exact)',
            'Frequency of Reuse (0-0.1)',
@@ -231,12 +232,12 @@ def build_bar_plot(data_path, words_per_chunk, title='Reuse'):
 
 
     reuse_button_group = RadioButtonGroup(
-        labels=_FIELDS[:3],
+        labels=_FIELDS[:3], button_type='primary'
         active=0
     )
 
     emotion_button_group = RadioButtonGroup(
-        labels=_FIELDS[3:],
+        labels=_FIELDS[3:], button_type='success'
         active=0
     )
 
@@ -304,6 +305,7 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
     emo_y = flat_data['No Comparison']
     reuse_max = reuse_y.values.max()
     emo_max = emo_y.values.max()
+    third_y = emo_y
 
     #Make ratio work
     ratio_denom = min(reuse_max, emo_max)
@@ -322,6 +324,7 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
                                    emo_y=emo_y,
                                    reuse_zero=reuse_zero,
                                    reuse_y=reuse_y,
+                                   third_y=third_y,
                                    span=span))
 
     plot = figure(x_range=FactorRange(*x),
@@ -348,6 +351,7 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
 
     plot.varea(x='x', source = source, y1 = 'reuse_y', y2 = 'reuse_zero', fill_color = Spectral6[0], fill_alpha = 0.6)
     plot.line(x='x', line_width=2.0, source=source, y='emo_y', line_color = Spectral6[1])
+    plot.line(x='x', line_width=2.0, source=source, y='third_y', line_color = 'red')
 
     reuse_button_group = RadioButtonGroup(
         labels=_FIELDS[:3],
@@ -361,18 +365,19 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
         button_type='success'
     )
 
-    callback = CustomJS(
-        args=dict(
-            source=source,
-            flat_data_source=flat_data_source,
-            reuse_button_group=reuse_button_group,
-            emotion_button_group=emotion_button_group
-        ),
-        code="""
+    third_button_group = RadioButtonGroup(
+        labels=_FIELDS[3:],
+        active=0,
+        button_type='danger'
+    )
+
+    callback_code="""
         var reuse = reuse_button_group.labels[reuse_button_group.active];
         var emo = emotion_button_group.labels[emotion_button_group.active];
+        var third = third_button_group.labels[third_button_group.active];
         var reuse_data = flat_data_source.data[reuse].slice();  // Copy
         var emo_data = flat_data_source.data[emo].slice();      // Copy
+        var third_data = flat_data_source.data[third].slice();
         var reuse_max = Math.max.apply(Math, reuse_data);
         var emo_max = Math.max.apply(Math, emo_data);
 
@@ -389,24 +394,72 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
                 ratio = 1;
             }
         }
-        for (var i = 0; i < to_scale.length; i++) {
-            to_scale[i] *= ratio;
-        }
+        // for (var i = 0; i < to_scale.length; i++) {
+        //    to_scale[i] *= ratio;
+        // }
 
         var x = source.data['x'];
         var reuse_y = source.data['reuse_y'];
         var emo_y = source.data['emo_y']
+        var third_y = source.data['third_y']
         for (var i = 0; i < x.length; i++) {
             reuse_y[i] = reuse_data[i];
             emo_y[i] = emo_data[i];
+            third_y[i] = third_data[i];
         }
-        source.change.emit();
-        """
-    )
-    reuse_button_group.js_on_change('active', callback)
-    emotion_button_group.js_on_change('active', callback)
 
-    layout = column(reuse_button_group, emotion_button_group, plot)
+        source.change.emit();
+        if (third_button_group.active == 0 || emotion_button_group.active == 0) {
+            return;
+        }
+
+        if (other_button_group) {
+            other_button_group.active = 0;
+
+        }
+    """
+
+    reuse_callback = CustomJS(
+        args=dict(
+            source=source,
+            flat_data_source=flat_data_source,
+            reuse_button_group=reuse_button_group,
+            emotion_button_group=emotion_button_group,
+            third_button_group=third_button_group,
+            other_button_group=None
+        ),
+        code=callback_code
+    )
+
+    emo_callback = CustomJS(
+        args=dict(
+            source=source,
+            flat_data_source=flat_data_source,
+            reuse_button_group=reuse_button_group,
+            emotion_button_group=emotion_button_group,
+            third_button_group=third_button_group,
+            other_button_group=third_button_group
+        ),
+        code=callback_code
+    )
+
+    third_callback = CustomJS(
+        args=dict(
+            source=source,
+            flat_data_source=flat_data_source,
+            reuse_button_group=reuse_button_group,
+            emotion_button_group=emotion_button_group,
+            third_button_group=third_button_group,
+            other_button_group=emotion_button_group
+        ),
+        code=callback_code
+    )
+
+    reuse_button_group.js_on_click(reuse_callback)
+    emotion_button_group.js_on_click(emo_callback)
+    third_button_group.js_on_click(third_callback)
+
+    layout = column(reuse_button_group, emotion_button_group, third_button_group, plot)
 
     return layout
 
