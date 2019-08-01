@@ -415,7 +415,6 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
 
         if (other_button_group) {
             other_button_group.active = 0;
-
         }
     """
 
