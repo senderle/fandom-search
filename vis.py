@@ -232,12 +232,12 @@ def build_bar_plot(data_path, words_per_chunk, title='Reuse'):
 
 
     reuse_button_group = RadioButtonGroup(
-        labels=_FIELDS[:3], button_type='primary'
+        labels=_FIELDS[:3], button_type = "primary",
         active=0
     )
 
     emotion_button_group = RadioButtonGroup(
-        labels=_FIELDS[3:], button_type='success'
+        labels=_FIELDS[3:], button_type = "success",
         active=0
     )
 
@@ -303,28 +303,34 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
     # Scale so that both maxima have the same height
     reuse_y = flat_data['Frequency of Reuse (Exact)']
     emo_y = flat_data['No Comparison']
+    emo2_y = flat_data['No Comparison']
     reuse_max = reuse_y.values.max()
     emo_max = emo_y.values.max()
-    third_y = emo_y
+    emo2_max = emo_y.values.max()
 
     #Make ratio work
-    ratio_denom = min(reuse_max, emo_max)
-    ratio_num = max(reuse_max, emo_max)
+    ratio_denom = min(emo2_max, min(reuse_max, emo_max))
+    ratio_num = max(emo2_max, max(reuse_max, emo_max))
     ratio = ratio_num / ratio_denom if ratio_denom > 0 else 1
-
-    to_scale = reuse_y if reuse_max < emo_max else emo_y
+    if reuse_max < emo_max and reuse_max < emo2_max:
+        to_scale = reuse_y
+    elif emo_max < emo2_max and emo_max < reuse_max:
+        to_scale = emo_y
+    else:
+        to_scale = emo2_y
     to_scale *= ratio
 
     # Create data columns
     x = [str(i) for i in flat_data.index]
+    reuse_y=reuse_y
     reuse_zero = len(reuse_y) * [0]
     span = flat_data.span
     flat_data_source = ColumnDataSource(flat_data)
     source = ColumnDataSource(dict(x=x,
-                                   emo_y=emo_y,
-                                   reuse_zero=reuse_zero,
                                    reuse_y=reuse_y,
-                                   third_y=third_y,
+                                   emo_y=emo_y,
+                                   emo2_y=emo_y,
+                                   reuse_zero=reuse_zero,
                                    span=span))
 
     plot = figure(x_range=FactorRange(*x),
@@ -350,62 +356,71 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
     hover.tooltips = "<div>@span{safe}</div>"
 
     plot.varea(x='x', source = source, y1 = 'reuse_y', y2 = 'reuse_zero', fill_color = Spectral6[0], fill_alpha = 0.6)
-    plot.line(x='x', line_width=2.0, source=source, y='emo_y', line_color = Spectral6[1])
-    plot.line(x='x', line_width=2.0, source=source, y='third_y', line_color = 'red')
+    plot.line(x='x', source = source, y = 'reuse_y', line_color = Spectral6[0], line_alpha = 0.0)
+    plot.line(x='x', line_width=1.0, source=source, y='emo_y', line_color = Spectral6[1])
+    plot.line(x='x', line_width=1.0, source=source, y='emo2_y', line_color = 'red')
+
 
     reuse_button_group = RadioButtonGroup(
-        labels=_FIELDS[:3],
-        active=0,
-        button_type='primary'
+        labels=_FIELDS[:3], button_type='primary',
+        active=0
     )
 
     emotion_button_group = RadioButtonGroup(
-        labels=_FIELDS[3:],
-        active=0,
-        button_type='success'
+        labels=_FIELDS[3:], button_type='success',
+        active=0
     )
 
-    third_button_group = RadioButtonGroup(
-        labels=_FIELDS[3:],
-        active=0,
-        button_type='danger'
+    emotion2_button_group = RadioButtonGroup(
+        labels=_FIELDS[3:], button_type='danger',
+        active=0
     )
 
     callback_code="""
         var reuse = reuse_button_group.labels[reuse_button_group.active];
         var emo = emotion_button_group.labels[emotion_button_group.active];
-        var third = third_button_group.labels[third_button_group.active];
+        var emo2 = emotion2_button_group.labels[emotion2_button_group.active];
         var reuse_data = flat_data_source.data[reuse].slice();  // Copy
         var emo_data = flat_data_source.data[emo].slice();      // Copy
-        var third_data = flat_data_source.data[third].slice();
+        var emo2_data = flat_data_source.data[emo2].slice();      // Copy
         var reuse_max = Math.max.apply(Math, reuse_data);
         var emo_max = Math.max.apply(Math, emo_data);
+        var emo2_max = Math.max.apply(Math, emo2_data);
 
         var ratio = 0;
         var to_scale = null;
-        if (emo_max > reuse_max) {
+        var to_scale_other = null;
+
+        if (emo_max > reuse_max && emo_max > emo2_max) {
             to_scale = reuse_data;
-            ratio = emo_max / reuse_max;
+            to_scale_also = emo2_data;
+            ratio_one = emo_max / reuse_max;
+            ratio_two = emo_max / emo2_max;
+        } else if (emo2_max > emo_max && emo2_max > reuse_max) {
+            to_scale = reuse_data;
+            to_scale_also = emo_data;
+            ratio_one = emo2_max / reuse_max;
+            ratio_two = emo2_max / emo_max;
         } else {
             to_scale = emo_data;
-            if (emo_max > 0) {
-                ratio = reuse_max / emo_max;
-            } else {
-                ratio = 1;
-            }
+            to_scale_also = emo2_data;
+            ratio_one = reuse_max / emo_max;
+            ratio_two = reuse_max / emo2_max;
         }
-        // for (var i = 0; i < to_scale.length; i++) {
-        //    to_scale[i] *= ratio;
-        // }
+
+        for (var i = 0; i < to_scale.length; i++) {
+            to_scale[i] *= ratio_one;
+            to_scale_also[i] *= ratio_two;
+        }
 
         var x = source.data['x'];
         var reuse_y = source.data['reuse_y'];
-        var emo_y = source.data['emo_y']
-        var third_y = source.data['third_y']
+        var emo_y = source.data['emo_y'];
+        var emo2_y = source.data['emo2_y']
         for (var i = 0; i < x.length; i++) {
             reuse_y[i] = reuse_data[i];
             emo_y[i] = emo_data[i];
-            third_y[i] = third_data[i];
+            emo2_y[i] = emo2_data[i];
         }
 
         source.change.emit();
@@ -416,7 +431,8 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
         if (other_button_group) {
             other_button_group.active = 0;
         }
-    """
+
+        """
 
     reuse_callback = CustomJS(
         args=dict(
@@ -424,11 +440,10 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
             flat_data_source=flat_data_source,
             reuse_button_group=reuse_button_group,
             emotion_button_group=emotion_button_group,
-            third_button_group=third_button_group,
+            emotion2_button_group=emotion2_button_group,
             other_button_group=None
-        ),
-        code=callback_code
-    )
+        ), code = callback_code)
+
 
     emo_callback = CustomJS(
         args=dict(
@@ -436,29 +451,27 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
             flat_data_source=flat_data_source,
             reuse_button_group=reuse_button_group,
             emotion_button_group=emotion_button_group,
-            third_button_group=third_button_group,
-            other_button_group=third_button_group
-        ),
-        code=callback_code
-    )
+            emotion2_button_group=emotion2_button_group,
+            other_button_group=emotion2_button_group
+        ), code = callback_code)
 
-    third_callback = CustomJS(
+    emo2_callback = CustomJS(
         args=dict(
             source=source,
             flat_data_source=flat_data_source,
             reuse_button_group=reuse_button_group,
             emotion_button_group=emotion_button_group,
-            third_button_group=third_button_group,
+            emotion2_button_group=emotion2_button_group,
             other_button_group=emotion_button_group
-        ),
-        code=callback_code
-    )
+        ), code = callback_code)
 
-    reuse_button_group.js_on_click(reuse_callback)
-    emotion_button_group.js_on_click(emo_callback)
-    third_button_group.js_on_click(third_callback)
 
-    layout = column(reuse_button_group, emotion_button_group, third_button_group, plot)
+    reuse_button_group.js_on_change('active', reuse_callback)
+    emotion_button_group.js_on_change('active', emo_callback)
+    emotion2_button_group.js_on_change('active', emo2_callback)
+
+
+    layout = column(reuse_button_group, emotion_button_group, emotion2_button_group, plot)
 
     return layout
 
