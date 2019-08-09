@@ -340,6 +340,9 @@ def project_sentiment_keys_shortform(counts, keys):
                 ct['UNDETERMINED'] = 0
         return counts
 
+def regex(name):
+    return (re.sub('(?P<name> (\w))*(\\(.*\\))', '\g<name>', name)).strip()
+    
 def format_data(args):
     original_script_markup = args.script
     match_table = args.matches
@@ -383,6 +386,25 @@ def format_data(args):
     os_markup = pd.DataFrame(os_markup_raw, columns=os_markup_header)
     os_markup.index.name = 'ORIGINAL_SCRIPT_WORD_INDEX'
 
+    os_markup.CHARACTER = os_markup.CHARACTER.apply(regex)
+    top_eight = collections.Counter(os_markup.CHARACTER).most_common(8)
+    top_eight_list = []
+    for (name_top,val) in top_eight:
+        top_eight_list = top_eight_list + [name_top]
+    top_eight_char = ["CHARACTER_" + name for name in top_eight_list]
+
+    used_names = []
+    name_char = os_markup.CHARACTER[0]
+    positive_match = 1 * (os_markup.CHARACTER == name_char)
+    matches_name = os_markup.assign(**{"CHARACTER_" + name_char: positive_match})
+    used_names = ["CHARACTER_" + name_char] + used_names
+
+    for top_name in top_eight_list:
+        if "CHARACTER_" + top_name not in used_names:
+            positive_matches = 1 * (os_markup.CHARACTER == top_name)
+            matches_name = matches_name.assign(**{"CHARACTER_" + top_name: positive_matches})
+            used_names = used_names + [top_name]
+
     match_word_counts = matches_thresh.groupby(
         'ORIGINAL_SCRIPT_WORD_INDEX'
     ).aggregate({
@@ -390,7 +412,7 @@ def format_data(args):
     })
 
     match_word_counts = match_word_counts.reindex(
-        os_markup.index,
+        matches_name.index,
         fill_value=0
     )
 
@@ -402,7 +424,8 @@ def format_data(args):
 
     match_word_counts = match_word_counts.join(match_word_words)
 
-    match_count = match_word_counts.join(os_markup)
+    match_count = (match_word_counts.join(matches_name))
+
     match_count.to_csv(output)
 
 def _format_data_sentiment_only(args):
