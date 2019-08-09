@@ -347,7 +347,7 @@ def format_data(args):
 
     matches = pd.read_csv(match_table)
 
-    name = 'Frequency of Reuse (Exact)'
+    name = 'Frequency of Reuse (Exact Matches)'
     positive_match = matches.BEST_COMBINED_DISTANCE <= 0
     matches_thresh = matches.assign(**{name: positive_match})
 
@@ -357,7 +357,7 @@ def format_data(args):
         positive_match = matches.BEST_COMBINED_DISTANCE <= thresh
         matches_thresh = matches_thresh.assign(**{name: positive_match})
     thresholds = [0] + thresholds
-    threshname = ['Frequency of Reuse (Exact)'] + threshname
+    threshname = ['Frequency of Reuse (Exact Matches)'] + threshname
 
     os_markup_raw = search.load_markup_script(original_script_markup)
     os_markup_header = os_markup_raw[0]
