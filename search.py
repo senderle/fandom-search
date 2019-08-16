@@ -341,7 +341,9 @@ def analyze(args,
             ):
     fan_work_directory = args.fan_works
     original_script_markup = args.script
-    subsample_works = args.num_works
+    subsample_start = 0 if args.skip_works < 0 else args.skip_works
+    subsample_end = (None if args.num_works < 0 else 
+                     args.num_works + subsample_start)
 
     fan_works = os.listdir(fan_work_directory)
     fan_works = [os.path.join(fan_work_directory, f)
@@ -351,9 +353,8 @@ def analyze(args,
     random.seed(4815162342)
     random.shuffle(fan_works)
 
-    # Option to only process a subset of works.
-    if subsample_works > 0:
-        fan_works = fan_works[:subsample_works]
+    # Optionally skip ahead in the list or stop early.
+    fan_works = fan_works[subsample_start:subsample_end]
 
     start = 0
     fan_clusters = [fan_works[i:i + chunk_size]

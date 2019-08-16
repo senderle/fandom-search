@@ -493,6 +493,7 @@ if __name__ == '__main__':
     search_parser.add_argument('fan_works', action='store', help='directory of fanwork text files')
     search_parser.add_argument('script', action='store', help='filename for markup version of script')
     search_parser.add_argument('-n', '--num-works', default=-1, type=int, help="number of works to search (for subsampling)")
+    search_parser.add_argument('-s', '--skip-works', default=0, type=int, help="number of works to skip (for subsampling)")
     search_parser.set_defaults(func=search.analyze)
 
     # Aggregate word-level counts
