@@ -342,7 +342,7 @@ def project_sentiment_keys_shortform(counts, keys):
 
 def regex(name):
     return (re.sub('(?P<name> (\w))*(\\(.*\\))', '\g<name>', name)).strip()
-    
+
 def format_data(args):
     original_script_markup = args.script
     match_table = args.matches
@@ -392,12 +392,12 @@ def format_data(args):
     for (name_top,val) in top_eight:
         top_eight_list = top_eight_list + [name_top]
     top_eight_char = ["CHARACTER_" + name for name in top_eight_list]
-
     used_names = []
-    name_char = os_markup.CHARACTER[0]
+    name_char = top_eight[0][0]
     positive_match = 1 * (os_markup.CHARACTER == name_char)
     matches_name = os_markup.assign(**{"CHARACTER_" + name_char: positive_match})
     used_names = ["CHARACTER_" + name_char] + used_names
+    print(matches_name)
 
     for top_name in top_eight_list:
         if "CHARACTER_" + top_name not in used_names:
