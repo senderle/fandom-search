@@ -19,7 +19,7 @@ from bokeh.events import ButtonClick
 _FIELDS = ['Frequency of Reuse (Exact Matches)',
            'Frequency of Reuse (0-0.1)',
            'Frequency of Reuse (0-0.25)',
-           'No Comparison',
+           'None',
            'ANGER',
            'ANTICIPATION',
            'DISGUST',
@@ -29,7 +29,8 @@ _FIELDS = ['Frequency of Reuse (Exact Matches)',
            'SURPRISE',
            'TRUST',
            'NEGATIVE',
-           'POSITIVE']
+           'POSITIVE',]
+           # 'None']
 
 _AGG_FUNCS = [lambda x: gmean(x + 1) - 1] * 3
 _AGG_FUNCS += [mean] * 11
@@ -125,16 +126,22 @@ def chart_cols(fandom_data, words_per_chunk):
     for h, c in zip(highlights, chunks):
         if c not in chunkmax or chunkmax[c] < h:
             chunkmax[c] = h
-    highlights = [(h / chunkmax[c] if chunkmax[c] > 0 else 0)
+    highlights = [( h / (1.6 * chunkmax[c]) if chunkmax[c] > 0 else 0)
                   for h, c in zip(highlights, chunks)]
 
     wform = word_formatter()
     spans = list(map(wform, words, prevwords, chars, newchar, newscene, highlights))
 
     fandom_data = fandom_data.assign(
-        **{'No Comparison': fandom_data[_FIELDS[0]].values * 0}
+        **{'None': fandom_data[_FIELDS[0]].values * 0}
     )
-    chart_cols = fandom_data[_FIELDS]
+
+    # fandom_data = fandom_data.assign(
+    #     **{'None': fandom_data[_FIELDS[0]].values * 0}
+    # )
+
+    character_cols = [x for x in fandom_data.columns if x.startswith("CHARACTER_")]
+    chart_cols = fandom_data[_FIELDS + character_cols]
     chart_cols = chart_cols.assign(chunk=chunks)
     chart_cols = chart_cols.assign(span=spans)
 
@@ -164,14 +171,22 @@ def join_wrap(seq):
     return '\n'.join('<div>{}</div>'.format(l) for l in lines)
 
 def chart_pivot(chart_cols):
-    fields = _FIELDS + ['span']
-    aggfuncs = _AGG_FUNCS + [join_wrap]
-    return pd.pivot_table(
+    character_cols = [x for x in chart_cols.columns if x.startswith("CHARACTER_")]
+    print(character_cols)
+    fields = _FIELDS + character_cols + ['span']
+    aggfuncs = _AGG_FUNCS + [mean] * len(character_cols) + [join_wrap]
+    table =  pd.pivot_table(
         chart_cols,
         values=fields,
         index=chart_cols.chunk,
         aggfunc=dict(zip(fields, aggfuncs))
     )
+    # apparently when you create a pandas pivot table, it will automatically
+    # sort your columns alphabetically (which is dumb). This is their work
+    # around, where you literally give the table the fields you already gave
+    # them, so that they "reindex" it.
+    return table.reindex(fields, axis=1)
+
 
 def build_bar_plot(data_path, words_per_chunk, title='Reuse'):
     #Read in from csv
@@ -181,7 +196,7 @@ def build_bar_plot(data_path, words_per_chunk, title='Reuse'):
 
     # Scale so that both maxima have the same height
     reuse_y = flat_data['Frequency of Reuse (Exact Matches)']
-    emo_y = flat_data['No Comparison']
+    emo_y = flat_data['None']
     reuse_max = reuse_y.values.max()
     emo_max = emo_y.values.max()
 
@@ -312,22 +327,22 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
 
     # Scale so that both maxima have the same height
     reuse_y = flat_data['Frequency of Reuse (Exact Matches)']
-    emo_y = flat_data['No Comparison']
-    emo2_y = flat_data['No Comparison']
+    emo_y = flat_data['None']
+    char_y = flat_data['None']
     reuse_max = reuse_y.values.max()
     emo_max = emo_y.values.max()
-    emo2_max = emo_y.values.max()
+    char_max = char_y.values.max()
 
     #Make ratio work
-    ratio_denom = min(emo2_max, min(reuse_max, emo_max))
-    ratio_num = max(emo2_max, max(reuse_max, emo_max))
+    ratio_denom = min(char_max, min(reuse_max, emo_max))
+    ratio_num = max(char_max, max(reuse_max, emo_max))
     ratio = ratio_num / ratio_denom if ratio_denom > 0 else 1
-    if reuse_max < emo_max and reuse_max < emo2_max:
+    if reuse_max < emo_max and reuse_max < char_max:
         to_scale = reuse_y
-    elif emo_max < emo2_max and emo_max < reuse_max:
+    elif emo_max < char_max and emo_max < reuse_max:
         to_scale = emo_y
     else:
-        to_scale = emo2_y
+        to_scale = char_y
     to_scale *= ratio
 
     # Create data columns
@@ -339,7 +354,7 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
     source = ColumnDataSource(dict(x=x,
                                    reuse_y=reuse_y,
                                    emo_y=emo_y,
-                                   emo2_y=emo_y,
+                                   char_y=char_y,
                                    reuse_zero=reuse_zero,
                                    span=span))
 
@@ -368,21 +383,24 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
     plot.varea(x='x', source = source, y1 = 'reuse_y', y2 = 'reuse_zero', fill_color = Spectral6[0], fill_alpha = 0.6)
     plot.line(x='x', source = source, y = 'reuse_y', line_color = Spectral6[0], line_alpha = 0.0)
     plot.line(x='x', line_width=2.0, source=source, y='emo_y', line_color = Spectral6[1])
-    plot.line(x='x', line_width=2.0, source=source, y='emo2_y', line_color = 'red')
+    plot.line(x='x', line_width=2.0, source=source, y='char_y', line_color = 'red')
 
 
     reuse_button_group = RadioButtonGroup(
-        labels= [_FIELDS[0]] + ["Frequency of Reuse (Fuzzy Matches)"], button_type='primary',
+        labels=[_FIELDS[0]] + ["Frequency of Reuse (Fuzzy Matches)"],
+        button_type='primary',
         active=0
     )
 
     emotion_button_group = RadioButtonGroup(
-        labels=_FIELDS[3:], button_type='success',
+        labels=_FIELDS[3:],
+        button_type='success',
         active=0
     )
 
-    emotion2_button_group = RadioButtonGroup(
-        labels=_FIELDS[3:], button_type='danger',
+    char_button_group = RadioButtonGroup(
+        labels= ['None'] + [x.replace("CHARACTER_", "") for x in flat_data.columns if x.startswith("CHARACTER_")],
+        button_type='danger',
         active=0
     )
 
@@ -392,33 +410,37 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
             reuse = "Frequency of Reuse (0-0.25)";
         }
         var emo = emotion_button_group.labels[emotion_button_group.active];
-        var emo2 = emotion2_button_group.labels[emotion2_button_group.active];
+        var char = char_button_group.labels[char_button_group.active];
         var reuse_data = flat_data_source.data[reuse].slice();  // Copy
         var emo_data = flat_data_source.data[emo].slice();      // Copy
-        var emo2_data = flat_data_source.data[emo2].slice();      // Copy
+        if (char == "None") {
+            var char_data = flat_data_source.data["None"].slice();
+        } else {
+            var char_data = flat_data_source.data["CHARACTER_" + char].slice();
+            }  // Copy
         var reuse_max = Math.max.apply(Math, reuse_data);
         var emo_max = Math.max.apply(Math, emo_data);
-        var emo2_max = Math.max.apply(Math, emo2_data);
+        var char_max = Math.max.apply(Math, char_data);
 
         var ratio = 0;
         var to_scale = null;
         var to_scale_other = null;
 
-        if (emo_max > reuse_max && emo_max > emo2_max) {
+        if (emo_max > reuse_max && emo_max > char_max) {
             to_scale = reuse_data;
-            to_scale_also = emo2_data;
+            to_scale_also = char_data;
             ratio_one = emo_max / reuse_max;
-            ratio_two = emo_max / emo2_max;
-        } else if (emo2_max > emo_max && emo2_max > reuse_max) {
+            ratio_two = emo_max / char_max;
+        } else if (char_max > emo_max && char_max > reuse_max) {
             to_scale = reuse_data;
             to_scale_also = emo_data;
-            ratio_one = emo2_max / reuse_max;
-            ratio_two = emo2_max / emo_max;
+            ratio_one = char_max / reuse_max;
+            ratio_two = char_max / emo_max;
         } else {
             to_scale = emo_data;
-            to_scale_also = emo2_data;
+            to_scale_also = char_data;
             ratio_one = reuse_max / emo_max;
-            ratio_two = reuse_max / emo2_max;
+            ratio_two = reuse_max / char_max;
         }
 
         for (var i = 0; i < to_scale.length; i++) {
@@ -429,15 +451,15 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
         var x = source.data['x'];
         var reuse_y = source.data['reuse_y'];
         var emo_y = source.data['emo_y'];
-        var emo2_y = source.data['emo2_y']
+        var char_y = source.data['char_y']
         for (var i = 0; i < x.length; i++) {
             reuse_y[i] = reuse_data[i];
             emo_y[i] = emo_data[i];
-            emo2_y[i] = emo2_data[i];
+            char_y[i] = char_data[i];
         }
 
         source.change.emit();
-        if (emotion2_button_group.active == 0 || emotion_button_group.active == 0) {
+        if (char_button_group.active == 0 || emotion_button_group.active == 0) {
             return;
         }
 
@@ -453,7 +475,7 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
             flat_data_source=flat_data_source,
             reuse_button_group=reuse_button_group,
             emotion_button_group=emotion_button_group,
-            emotion2_button_group=emotion2_button_group,
+            char_button_group=char_button_group,
             other_button_group=None
         ), code = callback_code)
 
@@ -464,54 +486,58 @@ def build_line_plot(data_path, words_per_chunk, title='Reuse'):
             flat_data_source=flat_data_source,
             reuse_button_group=reuse_button_group,
             emotion_button_group=emotion_button_group,
-            emotion2_button_group=emotion2_button_group,
-            other_button_group=emotion2_button_group
+            char_button_group=char_button_group,
+            other_button_group=char_button_group
         ), code = callback_code)
 
-    emo2_callback = CustomJS(
+    char_callback = CustomJS(
         args=dict(
             source=source,
             flat_data_source=flat_data_source,
             reuse_button_group=reuse_button_group,
             emotion_button_group=emotion_button_group,
-            emotion2_button_group=emotion2_button_group,
+            char_button_group=char_button_group,
             other_button_group=emotion_button_group
         ), code = callback_code)
 
 
     reuse_button_group.js_on_change('active', reuse_callback)
     emotion_button_group.js_on_change('active', emo_callback)
-    emotion2_button_group.js_on_change('active', emo2_callback)
+    char_button_group.js_on_change('active', char_callback)
 
 
-    layout = column(reuse_button_group, emotion_button_group, emotion2_button_group, plot)
+    layout = column(reuse_button_group, emotion_button_group, char_button_group, plot)
     tab1 = Panel(child=layout, title='Line')
     return tab1
 
-def build_line_plot_dropdown(data_path, words_per_chunk, title='Reuse'):
+
+def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse'):
     #Read in from csv
     flat_data = pd.read_csv(data_path)
+
     flat_data = chart_cols(flat_data, words_per_chunk)
+
     flat_data = chart_pivot(flat_data)
+
 
     # Scale so that both maxima have the same height
     reuse_y = flat_data['Frequency of Reuse (Exact Matches)']
-    emo_y = flat_data['No Comparison']
-    emo2_y = flat_data['No Comparison']
+    emo_y = flat_data['None']
+    char_y = flat_data['None']
     reuse_max = reuse_y.values.max()
     emo_max = emo_y.values.max()
-    emo2_max = emo_y.values.max()
+    char_max = char_y.values.max()
 
     #Make ratio work
-    ratio_denom = min(emo2_max, min(reuse_max, emo_max))
-    ratio_num = max(emo2_max, max(reuse_max, emo_max))
+    ratio_denom = min(char_max, min(reuse_max, emo_max))
+    ratio_num = max(char_max, max(reuse_max, emo_max))
     ratio = ratio_num / ratio_denom if ratio_denom > 0 else 1
-    if reuse_max < emo_max and reuse_max < emo2_max:
+    if reuse_max < emo_max and reuse_max < char_max:
         to_scale = reuse_y
-    elif emo_max < emo2_max and emo_max < reuse_max:
+    elif emo_max < char_max and emo_max < reuse_max:
         to_scale = emo_y
     else:
-        to_scale = emo2_y
+        to_scale = char_y
     to_scale *= ratio
 
     # Create data columns
@@ -523,7 +549,201 @@ def build_line_plot_dropdown(data_path, words_per_chunk, title='Reuse'):
     source = ColumnDataSource(dict(x=x,
                                    reuse_y=reuse_y,
                                    emo_y=emo_y,
-                                   emo2_y=emo_y,
+                                   char_y=char_y,
+                                   reuse_zero=reuse_zero,
+                                   span=span))
+
+    plot = figure(x_range=FactorRange(*x),
+                  plot_width=800, plot_height=600,
+                  title=title, tools="hover")
+
+    # Turn off ticks, major labels, and x grid lines, etc.
+    # Axis settings:
+    plot.xaxis.major_label_text_font_size = '0pt'
+    plot.xaxis.major_tick_line_color = None
+    plot.xaxis.minor_tick_line_color = None
+
+    plot.yaxis.major_label_text_font_size = '0pt'
+    plot.yaxis.major_tick_line_color = None
+    plot.yaxis.minor_tick_line_color = None
+
+    # CategoricalAxis settings:
+    plot.xaxis.group_text_font_size = '0pt'
+    plot.xaxis.separator_line_color = None
+
+    # Grid settings:
+    plot.xgrid.grid_line_color = None
+    # plot.ygrid.minor_grid_line_color = 'black'
+    # plot.ygrid.minor_grid_line_alpha = 0.03
+    plot.xaxis.axis_label = 'Beginning of Script    ←                                                                                                                                      →   End of Script'
+    plot.yaxis.axis_label = 'Low Reuse                           Medium Reuse                                  High Reuse'
+
+    hover = plot.select(dict(type=HoverTool))
+    hover.tooltips = "<div>@span{safe}</div>"
+
+    plot.varea(x='x', source = source, y1 = 'reuse_y', y2 = 'reuse_zero', fill_color = Spectral6[0], fill_alpha = 0.6)
+    plot.line(x='x', source = source, y = 'reuse_y', line_color = Spectral6[0], line_alpha = 0.0)
+    plot.line(x='x', line_width=2.0, source=source, y='emo_y', line_color = Spectral6[1])
+    plot.line(x='x', line_width=2.0, source=source, y='char_y', line_color = 'red')
+
+
+    reuse_button_group = RadioButtonGroup(
+        labels=[_FIELDS[0]] + ["Frequency of Reuse (Fuzzy Matches)"],
+        button_type='primary',
+        active=0
+    )
+
+    emotion_button_group = RadioButtonGroup(
+        labels=_FIELDS[3:],
+        button_type='success',
+        active=0
+    )
+
+    char_button_group = RadioButtonGroup(
+        labels= ['None'] + [x.replace("CHARACTER_", "") for x in flat_data.columns if x.startswith("CHARACTER_")],
+        button_type='danger',
+        active=0
+    )
+
+    print(char_button_group.labels)
+
+
+    callback_code="""
+        var reuse = reuse_button_group.labels[reuse_button_group.active];
+        if (reuse == "Frequency of Reuse (Fuzzy Matches)") {
+            reuse = "Frequency of Reuse (0-0.25)";
+        }
+        var emo = emotion_button_group.labels[emotion_button_group.active];
+        var char = char_button_group.labels[char_button_group.active];
+        var reuse_data = flat_data_source.data[reuse].slice();  // Copy
+        var emo_data = flat_data_source.data[emo].slice();      // Copy
+        if (char == "None") {
+            var char_data = flat_data_source.data["None"].slice();
+        } else {
+            var char_data = flat_data_source.data["CHARACTER_" + char].slice();
+            }  // Copy
+        var reuse_max = Math.max.apply(Math, reuse_data);
+        var emo_max = Math.max.apply(Math, emo_data);
+        var char_max = Math.max.apply(Math, char_data);
+
+        var ratio = 0;
+        var to_scale = null;
+        var to_scale_other = null;
+
+        if (emo_max > reuse_max && emo_max > char_max) {
+            to_scale = reuse_data;
+            to_scale_also = char_data;
+            ratio_one = emo_max / reuse_max;
+            ratio_two = emo_max / char_max;
+        } else if (char_max > emo_max && char_max > reuse_max) {
+            to_scale = reuse_data;
+            to_scale_also = emo_data;
+            ratio_one = char_max / reuse_max;
+            ratio_two = char_max / emo_max;
+        } else {
+            to_scale = emo_data;
+            to_scale_also = char_data;
+            ratio_one = reuse_max / emo_max;
+            ratio_two = reuse_max / char_max;
+        }
+
+        for (var i = 0; i < to_scale.length; i++) {
+            to_scale[i] *= ratio_one;
+            to_scale_also[i] *= ratio_two;
+        }
+
+        var x = source.data['x'];
+        var reuse_y = source.data['reuse_y'];
+        var emo_y = source.data['emo_y'];
+        var char_y = source.data['char_y']
+        for (var i = 0; i < x.length; i++) {
+            reuse_y[i] = reuse_data[i];
+            emo_y[i] = emo_data[i];
+            char_y[i] = char_data[i];
+        }
+
+        source.change.emit();
+
+        """
+
+    reuse_callback = CustomJS(
+        args=dict(
+            source=source,
+            flat_data_source=flat_data_source,
+            reuse_button_group=reuse_button_group,
+            emotion_button_group=emotion_button_group,
+            char_button_group=char_button_group,
+            other_button_group=None
+        ), code = callback_code)
+
+
+    emo_callback = CustomJS(
+        args=dict(
+            source=source,
+            flat_data_source=flat_data_source,
+            reuse_button_group=reuse_button_group,
+            emotion_button_group=emotion_button_group,
+            char_button_group=char_button_group,
+            other_button_group=char_button_group
+        ), code = callback_code)
+
+    char_callback = CustomJS(
+        args=dict(
+            source=source,
+            flat_data_source=flat_data_source,
+            reuse_button_group=reuse_button_group,
+            emotion_button_group=emotion_button_group,
+            char_button_group=char_button_group,
+            other_button_group=emotion_button_group
+        ), code = callback_code)
+
+
+    reuse_button_group.js_on_change('active', reuse_callback)
+    emotion_button_group.js_on_change('active', emo_callback)
+    char_button_group.js_on_change('active', char_callback)
+
+
+    layout = column(reuse_button_group, emotion_button_group, char_button_group, plot)
+    # tab1 = Panel(child=layout, title='Compare')
+    # return tab1
+    return layout
+
+def build_line_plot_dropdown(data_path, words_per_chunk, title='Reuse'):
+    #Read in from csv
+    flat_data = pd.read_csv(data_path)
+    flat_data = chart_cols(flat_data, words_per_chunk)
+    flat_data = chart_pivot(flat_data)
+
+    # Scale so that both maxima have the same height
+    reuse_y = flat_data['Frequency of Reuse (Exact Matches)']
+    emo_y = flat_data['None']
+    char_y = flat_data['None']
+    reuse_max = reuse_y.values.max()
+    emo_max = emo_y.values.max()
+    char_max = char_y.values.max()
+
+    #Make ratio work
+    ratio_denom = min(char_max, min(reuse_max, emo_max))
+    ratio_num = max(char_max, max(reuse_max, emo_max))
+    ratio = ratio_num / ratio_denom if ratio_denom > 0 else 1
+    if reuse_max < emo_max and reuse_max < char_max:
+        to_scale = reuse_y
+    elif emo_max < char_max and emo_max < reuse_max:
+        to_scale = emo_y
+    else:
+        to_scale = char_y
+    to_scale *= ratio
+
+    # Create data columns
+    x = [str(i) for i in flat_data.index]
+    reuse_y=reuse_y
+    reuse_zero = len(reuse_y) * [0]
+    span = flat_data.span
+    flat_data_source = ColumnDataSource(flat_data)
+    source = ColumnDataSource(dict(x=x,
+                                   reuse_y=reuse_y,
+                                   emo_y=emo_y,
+                                   char_y=char_y,
                                    reuse_zero=reuse_zero,
                                    span=span))
 
@@ -552,7 +772,7 @@ def build_line_plot_dropdown(data_path, words_per_chunk, title='Reuse'):
     plot.varea(x='x', source = source, y1 = 'reuse_y', y2 = 'reuse_zero', fill_color = Spectral6[0], fill_alpha = 0.6)
     plot.line(x='x', source = source, y = 'reuse_y', line_color = Spectral6[0], line_alpha = 0.0)
     plot.line(x='x', line_width=2.0, source=source, y='emo_y', line_color = Spectral6[1])
-    plot.line(x='x', line_width=2.0, source=source, y='emo2_y', line_color = 'red')
+    plot.line(x='x', line_width=2.0, source=source, y='char_y', line_color = 'red')
 
 
     reuse_button_group = RadioButtonGroup(
@@ -561,10 +781,10 @@ def build_line_plot_dropdown(data_path, words_per_chunk, title='Reuse'):
     )
 
     emotion_dropdown_button_group = Select(
-           title="Emotion", value="No Comparison", options=_FIELDS[3:])
+           title="Emotion", value="None", options=_FIELDS[3:])
 
-    emotion2_dropdown_button_group = Select(
-           title="Emotion2", value="No Comparison", options=_FIELDS[3:])
+    char_dropdown_button_group = Select(
+           title="Emotion2", value="None", options=_FIELDS[3:])
 
     callback_code="""
         var reuse = reuse_button_group.labels[reuse_button_group.active];
@@ -572,33 +792,33 @@ def build_line_plot_dropdown(data_path, words_per_chunk, title='Reuse'):
             reuse = "Frequency of Reuse (0-0.25)";
         }
         var emo = emotion_dropdown_button_group.value;
-        var emo2 = emotion2_dropdown_button_group.value;
+        var char = char_dropdown_button_group.value;
         var reuse_data = flat_data_source.data[reuse].slice();  // Copy
         var emo_data = flat_data_source.data[emo].slice();      // Copy
-        var emo2_data = flat_data_source.data[emo2].slice();      // Copy
+        var char_data = flat_data_source.data[char].slice();      // Copy
         var reuse_max = Math.max.apply(Math, reuse_data);
         var emo_max = Math.max.apply(Math, emo_data);
-        var emo2_max = Math.max.apply(Math, emo2_data);
+        var char_max = Math.max.apply(Math, char_data);
 
         var ratio = 0;
         var to_scale = null;
         var to_scale_other = null;
 
-        if (emo_max > reuse_max && emo_max > emo2_max) {
+        if (emo_max > reuse_max && emo_max > char_max) {
             to_scale = reuse_data;
-            to_scale_also = emo2_data;
+            to_scale_also = char_data;
             ratio_one = emo_max / reuse_max;
-            ratio_two = emo_max / emo2_max;
-        } else if (emo2_max > emo_max && emo2_max > reuse_max) {
+            ratio_two = emo_max / char_max;
+        } else if (char_max > emo_max && char_max > reuse_max) {
             to_scale = reuse_data;
             to_scale_also = emo_data;
-            ratio_one = emo2_max / reuse_max;
-            ratio_two = emo2_max / emo_max;
+            ratio_one = char_max / reuse_max;
+            ratio_two = char_max / emo_max;
         } else {
             to_scale = emo_data;
-            to_scale_also = emo2_data;
+            to_scale_also = char_data;
             ratio_one = reuse_max / emo_max;
-            ratio_two = reuse_max / emo2_max;
+            ratio_two = reuse_max / char_max;
         }
 
         for (var i = 0; i < to_scale.length; i++) {
@@ -609,20 +829,20 @@ def build_line_plot_dropdown(data_path, words_per_chunk, title='Reuse'):
         var x = source.data['x'];
         var reuse_y = source.data['reuse_y'];
         var emo_y = source.data['emo_y'];
-        var emo2_y = source.data['emo2_y']
+        var char_y = source.data['char_y']
         for (var i = 0; i < x.length; i++) {
             reuse_y[i] = reuse_data[i];
             emo_y[i] = emo_data[i];
-            emo2_y[i] = emo2_data[i];
+            char_y[i] = char_data[i];
         }
 
         source.change.emit();
-        if (emotion2_dropdown_button_group.value == "No Comparison" || emotion_dropdown_button_group.value == "No Comparison") {
+        if (char_dropdown_button_group.value == "None" || emotion_dropdown_button_group.value == "None") {
             return;
         }
 
         if (other_button_group) {
-            other_button_group.value = "No Comparison";
+            other_button_group.value = "None";
         }
 
         """
@@ -633,7 +853,7 @@ def build_line_plot_dropdown(data_path, words_per_chunk, title='Reuse'):
             flat_data_source=flat_data_source,
             reuse_button_group=reuse_button_group,
             emotion_dropdown_button_group=emotion_dropdown_button_group,
-            emotion2_dropdown_button_group=emotion2_dropdown_button_group,
+            char_dropdown_button_group=char_dropdown_button_group,
             other_button_group=None
         ), code = callback_code)
 
@@ -644,32 +864,37 @@ def build_line_plot_dropdown(data_path, words_per_chunk, title='Reuse'):
             flat_data_source=flat_data_source,
             reuse_button_group=reuse_button_group,
             emotion_dropdown_button_group=emotion_dropdown_button_group,
-            emotion2_dropdown_button_group=emotion2_dropdown_button_group,
-            other_button_group=emotion2_dropdown_button_group
+            char_dropdown_button_group=char_dropdown_button_group,
+            other_button_group=char_dropdown_button_group
         ), code = callback_code)
 
-    emo2_callback = CustomJS(
+    char_callback = CustomJS(
         args=dict(
             source=source,
             flat_data_source=flat_data_source,
             reuse_button_group=reuse_button_group,
             emotion_dropdown_button_group=emotion_dropdown_button_group,
-            emotion2_dropdown_button_group=emotion2_dropdown_button_group,
+            char_dropdown_button_group=char_dropdown_button_group,
             other_button_group=emotion_dropdown_button_group
         ), code = callback_code)
 
 
     reuse_button_group.js_on_change('active', reuse_callback)
     emotion_dropdown_button_group.js_on_change('value', emo_callback)
-    emotion2_dropdown_button_group.js_on_change('value', emo2_callback)
+    char_dropdown_button_group.js_on_change('value', char_callback)
 
 
-    layout = column(reuse_button_group, emotion_dropdown_button_group, emotion2_dropdown_button_group, plot)
+    layout = column(reuse_button_group, emotion_dropdown_button_group, char_dropdown_button_group, plot)
     tab1 = Panel(child=layout, title='Line Dropdown')
     return tab1
 
 def build_plot(args):
-    return Tabs(tabs=[build_line_plot(args.input, args.words_per_chunk), build_line_plot_dropdown(args.input, args.words_per_chunk), build_bar_plot(args.input, args.words_per_chunk)])
+    # return Tabs(tabs=[build_line_plot(args.input, args.words_per_chunk),
+    #                   # build_line_plot_dropdown(args.input, args.words_per_chunk),
+    #                   build_line_plot_compare(args.input, args.words_per_chunk)])
+    return build_line_plot_compare(args.input, args.words_per_chunk)
+
+
 
 def save_static(args):
     plot = build_plot(args)
