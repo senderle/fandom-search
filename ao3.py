@@ -397,7 +397,6 @@ def format_data(args):
     positive_match = 1 * (os_markup.CHARACTER == name_char)
     matches_name = os_markup.assign(**{"CHARACTER_" + name_char: positive_match})
     used_names = ["CHARACTER_" + name_char] + used_names
-    print(matches_name)
 
     for top_name in top_eight_list:
         if "CHARACTER_" + top_name not in used_names:
