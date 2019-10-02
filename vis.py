@@ -54,6 +54,14 @@ def parse_args():
     args.out_filename = 'star-wars-reuse.html'
     return args
 
+def unnan(val):
+    # Pandas annoyingly converts the string 'nan' into a floating
+    # point nan value, even in an all-string column.
+    if isinstance(val, float) and math.isnan(val):
+        return 'nan'
+    else:
+        return val
+
 def word_formatter(names=None):
     if names is None:
         names = []
@@ -71,17 +79,16 @@ def word_formatter(names=None):
             return '<span style="{}">{}</span>'.format(style, content)
 
     def format_word(word, prev_word, character, new_char, new_scene, highlight=None):
+        character = unnan(character).upper()
+        word = unnan(word)
+
         parts = []
         if new_scene:
             parts.append(span('-- next scene--<br \>'))
+
         if new_char:
             parts.append('\n')
             parts.append(span(' ' + character.upper() + ': '))
-
-        # Pandas annoyingly converts the string 'nan' into a floating
-        # point nan value, even in an all-string column.
-        if isinstance(word, float) and math.isnan(word):
-            word = 'nan'
 
         if word in punctuation or word in contractions:
             # no space before punctuation
