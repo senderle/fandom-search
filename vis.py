@@ -11,7 +11,7 @@ from bokeh.resources import CDN
 from bokeh.embed import file_html, components
 from bokeh.layouts import row, column
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource, FactorRange, Panel, Tabs
-from bokeh.models.widgets import RadioButtonGroup, Select
+from bokeh.models.widgets import RadioButtonGroup, CheckboxButtonGroup, Select
 from bokeh.transform import factor_cmap
 from bokeh.palettes import Spectral6
 from bokeh.events import ButtonClick
@@ -165,7 +165,6 @@ def join_wrap(seq):
 
 def chart_pivot(chart_cols):
     character_cols = [x for x in chart_cols.columns if x.startswith("CHARACTER_")]
-    print(character_cols)
     fields = _FIELDS + character_cols + ['span']
     aggfuncs = _AGG_FUNCS + [mean] * len(character_cols) + [join_wrap]
     table =  pd.pivot_table(
@@ -517,20 +516,22 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
     reuse_y = flat_data['Frequency of Reuse (Exact Matches)']
     emo_y = flat_data['None']
     char_y = flat_data['None']
+    mult_char_y = flat_data['None']
     reuse_max = reuse_y.values.max()
     emo_max = emo_y.values.max()
     char_max = char_y.values.max()
+    mult_char_max = mult_char_y.values.max()
 
     #Make ratio work
-    ratio_denom = min(char_max, min(reuse_max, emo_max))
-    ratio_num = max(char_max, max(reuse_max, emo_max))
+    ratio_denom = min(mult_char_max, min(reuse_max, emo_max))
+    ratio_num = max(mult_char_max, max(reuse_max, emo_max))
     ratio = ratio_num / ratio_denom if ratio_denom > 0 else 1
-    if reuse_max < emo_max and reuse_max < char_max:
+    if reuse_max < emo_max and reuse_max < mult_char_max:
         to_scale = reuse_y
-    elif emo_max < char_max and emo_max < reuse_max:
+    elif emo_max < mult_char_max and emo_max < reuse_max:
         to_scale = emo_y
     else:
-        to_scale = char_y
+        to_scale = mult_char_y
     to_scale *= ratio
 
     # Create data columns
@@ -543,6 +544,7 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
                                    reuse_y=reuse_y,
                                    emo_y=emo_y,
                                    char_y=char_y,
+                                   mult_char_y=mult_char_y,
                                    reuse_zero=reuse_zero,
                                    span=span))
 
@@ -578,6 +580,7 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
     plot.line(x='x', source = source, y = 'reuse_y', line_color = Spectral6[0], line_alpha = 0.0)
     plot.line(x='x', line_width=2.0, source=source, y='emo_y', line_color = Spectral6[1])
     plot.line(x='x', line_width=2.0, source=source, y='char_y', line_color = 'red')
+    plot.line(x='x', line_width=2.0, source=source, y='mult_char_y', line_color = 'red')
 
 
     reuse_button_group = RadioButtonGroup(
@@ -598,7 +601,11 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
         active=0
     )
 
-    print(char_button_group.labels)
+    mult_char_button_group = CheckboxButtonGroup(
+        labels= ['None'] + [x.replace("CHARACTER_", "") for x in flat_data.columns if x.startswith("CHARACTER_")],
+        button_type='danger',
+        active=[]
+    )
 
 
     callback_code="""
@@ -608,6 +615,16 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
         }
         var emo = emotion_button_group.labels[emotion_button_group.active];
         var char = char_button_group.labels[char_button_group.active];
+        var mult_char = [];
+        for (i = 0; i < mult_char_button_group.active.length; i++) {
+            mult_char.push(mult_char_button_group.labels[mult_char_button_group.active[i]]);
+        }
+        if (mult_char.includes("None")) {
+            mult_char = [];
+            mult_char_button_group.active = []
+        }
+        console.log(mult_char);
+
         var reuse_data = flat_data_source.data[reuse].slice();  // Copy
         var emo_data = flat_data_source.data[emo].slice();      // Copy
         if (char == "None") {
@@ -615,29 +632,73 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
         } else {
             var char_data = flat_data_source.data["CHARACTER_" + char].slice();
             }  // Copy
+
+        var multiplied = [];
+        var listOfLists = [];
+        var newList = [[]];
+        for (i = 0; i < mult_char.length; i++) {
+            if (mult_char[i] == "None") {
+                listOfLists.push(flat_data_source.data["None"].slice());
+            } else {
+                listOfLists.push(flat_data_source.data["CHARACTER_" + mult_char[i]].slice());
+                }
+        }
+
+
+        function zip(a) {
+            if (a.length == 0) {
+                return [];
+            }
+            var output = [];
+            var length = a[0].length;
+            for (i = 0; i < length; i++) {
+                var newRow = [];
+                for (j = 0; j < a.length; j++) {
+                    newRow.push(a[j][i]);
+                }
+                output.push(newRow);
+            }
+            return output;
+        }
+
+        function gMean(a) {
+            var starter = 1;
+            for (i = 0; i < a.length; i++) {
+                starter = starter * a[i];
+            }
+            if (starter == 0) {
+                return 0;
+            } else {
+                return Math.pow(starter, 1/a.length);
+                }
+        }
+
+        var mult_char_data = zip(listOfLists).map(gMean);
+
         var reuse_max = Math.max.apply(Math, reuse_data);
         var emo_max = Math.max.apply(Math, emo_data);
         var char_max = Math.max.apply(Math, char_data);
+        var mult_char_max = Math.max.apply(Math, mult_char_data);
 
         var ratio = 0;
         var to_scale = null;
         var to_scale_other = null;
 
-        if (emo_max > reuse_max && emo_max > char_max) {
+        if (emo_max > reuse_max && emo_max > mult_char_max) {
             to_scale = reuse_data;
-            to_scale_also = char_data;
+            to_scale_also = mult_char_data;
             ratio_one = emo_max / reuse_max;
-            ratio_two = emo_max / char_max;
-        } else if (char_max > emo_max && char_max > reuse_max) {
+            ratio_two = emo_max / mult_char_max;
+        } else if (mult_char_max > emo_max && mult_char_max > reuse_max) {
             to_scale = reuse_data;
             to_scale_also = emo_data;
-            ratio_one = char_max / reuse_max;
-            ratio_two = char_max / emo_max;
+            ratio_one = mult_char_max / reuse_max;
+            ratio_two = mult_char_max / emo_max;
         } else {
             to_scale = emo_data;
-            to_scale_also = char_data;
+            to_scale_also = mult_char_data;
             ratio_one = reuse_max / emo_max;
-            ratio_two = reuse_max / char_max;
+            ratio_two = reuse_max / mult_char_max;
         }
 
         for (var i = 0; i < to_scale.length; i++) {
@@ -648,11 +709,13 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
         var x = source.data['x'];
         var reuse_y = source.data['reuse_y'];
         var emo_y = source.data['emo_y'];
-        var char_y = source.data['char_y']
+        var char_y = source.data['char_y'];
+        var mult_char_y = source.data['mult_char_y']
         for (var i = 0; i < x.length; i++) {
             reuse_y[i] = reuse_data[i];
             emo_y[i] = emo_data[i];
             char_y[i] = char_data[i];
+            mult_char_y[i] = mult_char_data[i];
         }
 
         source.change.emit();
@@ -666,6 +729,7 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
             reuse_button_group=reuse_button_group,
             emotion_button_group=emotion_button_group,
             char_button_group=char_button_group,
+            mult_char_button_group=mult_char_button_group,
             other_button_group=None
         ), code = callback_code)
 
@@ -677,6 +741,7 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
             reuse_button_group=reuse_button_group,
             emotion_button_group=emotion_button_group,
             char_button_group=char_button_group,
+            mult_char_button_group=mult_char_button_group,
             other_button_group=char_button_group
         ), code = callback_code)
 
@@ -687,6 +752,18 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
             reuse_button_group=reuse_button_group,
             emotion_button_group=emotion_button_group,
             char_button_group=char_button_group,
+            mult_char_button_group=mult_char_button_group,
+            other_button_group=emotion_button_group
+        ), code = callback_code)
+
+    mult_char_callback = CustomJS(
+        args=dict(
+            source=source,
+            flat_data_source=flat_data_source,
+            reuse_button_group=reuse_button_group,
+            emotion_button_group=emotion_button_group,
+            char_button_group=char_button_group,
+            mult_char_button_group=mult_char_button_group,
             other_button_group=emotion_button_group
         ), code = callback_code)
 
@@ -694,9 +771,10 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
     reuse_button_group.js_on_change('active', reuse_callback)
     emotion_button_group.js_on_change('active', emo_callback)
     char_button_group.js_on_change('active', char_callback)
+    mult_char_button_group.js_on_change('active', mult_char_callback)
 
 
-    layout = column(reuse_button_group, emotion_button_group, char_button_group, plot)
+    layout = column(reuse_button_group, emotion_button_group, mult_char_button_group, plot)
     # tab1 = Panel(child=layout, title='Compare')
     # return tab1
     return layout
