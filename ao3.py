@@ -386,7 +386,7 @@ def format_data(args):
     os_markup = pd.DataFrame(os_markup_raw, columns=os_markup_header)
     os_markup.index.name = 'ORIGINAL_SCRIPT_WORD_INDEX'
 
-    os_markup.CHARACTER = os_markup.CHARACTER.apply(regex)
+    #os_markup.CHARACTER = os_markup.CHARACTER.apply(regex)
     top_eight = collections.Counter(os_markup.CHARACTER).most_common(8)
     top_eight_list = []
     for (name_top,val) in top_eight:
@@ -395,13 +395,13 @@ def format_data(args):
     used_names = []
     name_char = top_eight[0][0]
     positive_match = 1 * (os_markup.CHARACTER == name_char)
-    matches_name = os_markup.assign(**{"CHARACTER_" + name_char: positive_match})
+    matches_name = os_markup.assign(**{"CHARACTER_" + name_char.upper(): positive_match})
     used_names = ["CHARACTER_" + name_char] + used_names
 
     for top_name in top_eight_list:
         if "CHARACTER_" + top_name not in used_names:
             positive_matches = 1 * (os_markup.CHARACTER == top_name)
-            matches_name = matches_name.assign(**{"CHARACTER_" + top_name: positive_matches})
+            matches_name = matches_name.assign(**{"CHARACTER_" + top_name.upper(): positive_matches})
             used_names = used_names + [top_name]
 
     match_word_counts = matches_thresh.groupby(

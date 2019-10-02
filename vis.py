@@ -596,10 +596,10 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
         active=0
     )
 
-    emotion_button_group = RadioButtonGroup(
-        labels=_FIELDS[3:],
+    emotion_button_group = CheckboxButtonGroup(
+        labels= ['Clear'] + _FIELDS[4:],
         button_type='success',
-        active=0
+        active=[],
     )
 
     char_button_group = RadioButtonGroup(
@@ -609,7 +609,7 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
     )
 
     mult_char_button_group = CheckboxButtonGroup(
-        labels= ['None'] + [x.replace("CHARACTER_", "") for x in flat_data.columns if x.startswith("CHARACTER_")],
+        labels= ['Clear'] + [x.replace("CHARACTER_", "") for x in flat_data.columns if x.startswith("CHARACTER_")],
         button_type='danger',
         active=[]
     )
@@ -620,20 +620,30 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
         if (reuse == "Frequency of Reuse (Fuzzy Matches)") {
             reuse = "Frequency of Reuse (0-0.25)";
         }
-        var emo = emotion_button_group.labels[emotion_button_group.active];
+        //var emo = emotion_button_group.labels[emotion_button_group.active];
         var char = char_button_group.labels[char_button_group.active];
         var mult_char = [];
         for (i = 0; i < mult_char_button_group.active.length; i++) {
             mult_char.push(mult_char_button_group.labels[mult_char_button_group.active[i]]);
         }
-        if (mult_char.includes("None")) {
+        if (mult_char.includes("Clear")) {
             mult_char = [];
             mult_char_button_group.active = []
         }
-        console.log(mult_char);
+
+        var emo_arr = [];
+        for (i = 0; i < emotion_button_group.active.length; i++) {
+            emo_arr.push(emotion_button_group.labels[emotion_button_group.active[i]]);
+        }
+        if (emo_arr.includes("Clear")) {
+            emo_arr = [];
+            emotion_button_group.active = []
+        }
+
+
 
         var reuse_data = flat_data_source.data[reuse].slice();  // Copy
-        var emo_data = flat_data_source.data[emo].slice();      // Copy
+        //var emo_data = flat_data_source.data[emo].slice();      // Copy
         if (char == "None") {
             var char_data = flat_data_source.data["None"].slice();
         } else {
@@ -644,12 +654,22 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
         var listOfLists = [];
         var newList = [[]];
         for (i = 0; i < mult_char.length; i++) {
-            if (mult_char[i] == "None") {
+            if (mult_char[i] == "Clear") {
                 listOfLists.push(flat_data_source.data["None"].slice());
             } else {
                 listOfLists.push(flat_data_source.data["CHARACTER_" + mult_char[i]].slice());
                 }
         }
+
+        var emoListOfLists = [];
+        for (i = 0; i < emo_arr.length; i++) {
+            if (emo_arr[i] == "Clear") {
+                emoListOfLists.push(flat_data_source.data["None"].slice());
+            } else {
+                emoListOfLists.push(flat_data_source.data[emo_arr[i]].slice());
+                }
+        }
+
 
 
         function zip(a) {
@@ -681,6 +701,7 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
         }
 
         var mult_char_data = zip(listOfLists).map(gMean);
+        var emo_data = zip(emoListOfLists).map(gMean)
 
         var reuse_max = Math.max.apply(Math, reuse_data);
         var emo_max = Math.max.apply(Math, emo_data);
@@ -691,26 +712,35 @@ def build_line_plot_compare(data_path, words_per_chunk, title='Degree of Reuse')
         var to_scale = null;
         var to_scale_other = null;
 
-        if (emo_max > reuse_max && emo_max > mult_char_max) {
-            to_scale = reuse_data;
-            to_scale_also = mult_char_data;
-            ratio_one = emo_max / reuse_max;
-            ratio_two = emo_max / mult_char_max;
-        } else if (mult_char_max > emo_max && mult_char_max > reuse_max) {
-            to_scale = reuse_data;
-            to_scale_also = emo_data;
-            ratio_one = mult_char_max / reuse_max;
-            ratio_two = mult_char_max / emo_max;
-        } else {
-            to_scale = emo_data;
-            to_scale_also = mult_char_data;
-            ratio_one = reuse_max / emo_max;
-            ratio_two = reuse_max / mult_char_max;
+        //if (emo_max > reuse_max && emo_max > mult_char_max) {
+        //    to_scale = reuse_data;
+        //    to_scale_also = mult_char_data;
+        //    ratio_one = emo_max / reuse_max;
+        //    ratio_two = emo_max / mult_char_max;
+        //
+        //} else if (mult_char_max > emo_max && mult_char_max > reuse_max) {
+        //    to_scale = reuse_data;
+        //    to_scale_also = emo_data;
+        //    ratio_one = mult_char_max / reuse_max;
+        //    ratio_two = mult_char_max / emo_max;
+        //} else if (reuse_max > emo_max && reuse_max > mult_char_max){
+        //    to_scale = emo_data;
+        //    to_scale_also = mult_char_data;
+        //    ratio_one = reuse_max / emo_max;
+        //    ratio_two = reuse_max / mult_char_max;
+        //}
+        //
+        for (var i = 0; i < mult_char_data.length; i++) {
+            mult_char_data[i] /= mult_char_max;
+
         }
 
-        for (var i = 0; i < to_scale.length; i++) {
-            to_scale[i] *= ratio_one;
-            to_scale_also[i] *= ratio_two;
+        for (var i = 0; i < emo_data.length; i++) {
+            emo_data[i] /= emo_max;
+        }
+
+        for (var i = 0; i < reuse_data.length; i++) {
+            reuse_data[i] /= reuse_max;
         }
 
         var x = source.data['x'];
