@@ -163,7 +163,7 @@ class AnnIndexSearch(object):
     def search(self, filename):
         with open(filename, encoding='utf8') as fan_file:
             fan = fan_file.read()
-            fan = [t for ch in sp_parse_chunks(fan) for t in ch]
+            fan = [t for ch in sp_parse_chunks(fan) for t in ch if not t.is_space]
 
         # Create the fan windows:
         fan_vectors = mk_vectors(fan)
@@ -320,6 +320,7 @@ def load_markup_script(filename,
                 current_char = _char_rex.search(line).group('character')
             elif _line_rex.search(line):
                 tokens = spacy_model(_line_rex.search(line).group('line'))
+                tokens = [t for t in tokens if not t.is_space]
                 for t in tokens:
                     # original Spacy lexeme object can be recreated using
                     #     spacy.lexeme.Lexeme(get_spacy_model().vocab, t.orth)
